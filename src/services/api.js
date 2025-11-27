@@ -1,4 +1,4 @@
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://vocab-app-express-backend-j6sd4lic0-koushik-ahmeds-projects.vercel.app';
 
 const handleResponse = async (response) => {
   let data;

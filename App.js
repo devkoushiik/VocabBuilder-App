@@ -649,9 +649,14 @@ export default function App() {
       </View>
 
       {isLoadingList ? (
-        <ActivityIndicator color="#2563eb" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingText}>Loading vocabulary...</Text>
+        </View>
       ) : managementList.length === 0 ? (
-        <Text style={styles.emptyState}>No vocabulary yet.</Text>
+        <View style={styles.emptyStateContainer}>
+          <Text style={styles.emptyStateText}>No vocabulary yet.</Text>
+        </View>
       ) : (
         managementList.map((entry) => (
           <View key={entry._id} style={styles.vocabItem}>
@@ -804,17 +809,23 @@ export default function App() {
             style={[
               styles.rangeButton,
               filters.limit === String(value) && styles.rangeButtonActive,
+              isLoadingCards && styles.disabledButton,
             ]}
             onPress={() => handleQuickRange(value)}
+            disabled={isLoadingCards}
           >
-            <Text
-              style={[
-                styles.rangeButtonText,
-                filters.limit === String(value) && styles.rangeButtonTextActive,
-              ]}
-            >
-              {value} cards
-            </Text>
+            {isLoadingCards && filters.limit === String(value) ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <Text
+                style={[
+                  styles.rangeButtonText,
+                  filters.limit === String(value) && styles.rangeButtonTextActive,
+                ]}
+              >
+                {value} cards
+              </Text>
+            )}
           </TouchableOpacity>
         ))}
       </View>
@@ -832,7 +843,12 @@ export default function App() {
         </Text>
       )}
 
-      {allFlashcards.length > 0 && (
+      {isLoadingCards ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#2563eb" />
+          <Text style={styles.loadingText}>Loading flashcards...</Text>
+        </View>
+      ) : allFlashcards.length > 0 ? (
         <View style={styles.practiceArea}>
           <View style={styles.flashcardGrid}>
             {currentPageFlashcards.map((card, idx) => (
@@ -875,6 +891,12 @@ export default function App() {
               </TouchableOpacity>
             </View>
           )}
+        </View>
+      ) : (
+        <View style={styles.emptyStateContainer}>
+          <Text style={styles.emptyStateText}>
+            No flashcards available. Adjust filters or load data.
+          </Text>
         </View>
       )}
     </View>
@@ -1350,5 +1372,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     color: '#64748b',
     marginTop: 8,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    gap: 16,
+  },
+  loadingText: {
+    color: '#64748b',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    color: '#94a3b8',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: '500',
   },
 });

@@ -1,22 +1,39 @@
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://vocab-app-express-backend-j6sd4lic0-koushik-ahmeds-projects.vercel.app';
 
+// Debug: Log API URL (remove in production if needed)
+if (__DEV__) {
+  console.log('API URL configured:', API_URL);
+}
+
 const handleResponse = async (response) => {
-  let data;
-  try {
-    data = await response.json();
-  } catch (e) {
-    throw new Error('Invalid response from server');
+  // Get response as text first (React Native compatible)
+  const text = await response.text();
+  
+  // Check for HTML responses (Vercel deployment protection)
+  if (text.trim().startsWith('<!') || text.includes('<html') || text.includes('Authentication Required') || text.includes('Vercel Authentication')) {
+    console.error('Received HTML response - Vercel deployment protection is enabled:', text.substring(0, 300));
+    throw new Error('API is protected. Please disable Vercel Deployment Protection in your Vercel project settings. Check VERCEL_PROTECTION_FIX.md for instructions.');
   }
   
+  // Parse JSON
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (parseError) {
+    console.error('JSON parse error. Response text:', text.substring(0, 200));
+    throw new Error(`Invalid JSON response from server. Status: ${response.status}`);
+  }
+  
+  // Check if response is not OK
   if (!response.ok) {
-    // Extract detailed error message from backend validation
-    const message = data?.message || 'Request failed';
+    const message = data?.message || `Request failed with status ${response.status}`;
     const details = data?.details || [];
     const errorMsg = details.length > 0 
       ? `${message}: ${details.join(', ')}`
       : message;
     throw new Error(errorMsg);
   }
+  
   return data;
 };
 
@@ -34,38 +51,72 @@ const buildQuery = (params = {}) => {
 };
 
 export const createVocabulary = async (payload) => {
-  const response = await fetch(`${API_URL}/api/v1/vocabulary`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  try {
+    if (__DEV__) {
+      console.log('Creating vocabulary:', payload);
+    }
+    
+    const response = await fetch(`${API_URL}/api/v1/vocabulary`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  return handleResponse(response);
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Create vocabulary error:', error);
+    if (error.message) {
+      throw error;
+    }
+    throw new Error(`Network error: ${error.message || 'Failed to create vocabulary. Check your internet connection and API URL.'}`);
+  }
 };
 
 export const updateVocabulary = async (id, payload) => {
-  const response = await fetch(`${API_URL}/api/v1/vocabulary/${id}`, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const response = await fetch(`${API_URL}/api/v1/vocabulary/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  return handleResponse(response);
+    return handleResponse(response);
+  } catch (error) {
+    if (error.message) {
+      throw error;
+    }
+    throw new Error(`Network error: ${error.message || 'Failed to update vocabulary. Check your internet connection and API URL.'}`);
+  }
 };
 
 export const deleteVocabulary = async (id) => {
-  const response = await fetch(`${API_URL}/api/v1/vocabulary/${id}`, {
-    method: 'DELETE',
-  });
+  try {
+    const response = await fetch(`${API_URL}/api/v1/vocabulary/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
 
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    const message = data?.message || 'Delete failed';
-    throw new Error(message);
+    // For DELETE, 204 is success (no content)
+    if (response.status === 204) {
+      return;
+    }
+    
+    // Use handleResponse for error cases
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Delete vocabulary error:', error);
+    if (error.message) {
+      throw error;
+    }
+    throw new Error(`Network error: ${error.message || 'Failed to delete vocabulary. Check your internet connection and API URL.'}`);
   }
 };
 
@@ -121,8 +172,32 @@ export const fetchVocabulary = async (params = {}) => {
   const url = query
     ? `${API_URL}/api/v1/vocabulary?${query}`
     : `${API_URL}/api/v1/vocabulary`;
-  const response = await fetch(url);
-  return handleResponse(response);
+  
+  try {
+    if (__DEV__) {
+      console.log('Fetching from URL:', url);
+    }
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+    
+    if (__DEV__) {
+      console.log('Response status:', response.status, response.statusText);
+    }
+    
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Fetch error:', error);
+    // Handle network errors
+    if (error.message) {
+      throw error;
+    }
+    throw new Error(`Network error: ${error.message || 'Failed to fetch data. Check your internet connection and API URL.'}`);
+  }
 };
 
 export const fetchFlashcards = (params) => fetchVocabulary(params);

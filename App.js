@@ -577,8 +577,10 @@ export default function App() {
   const renderHome = () => (
     <View style={[styles.heroCard, { backgroundColor: colors.heroBg, borderColor: colors.primaryLight }]}>
       <TouchableOpacity
-        style={styles.themeToggleButton}
+        style={[styles.themeToggleButton, { zIndex: 50, elevation: 50 }]}
         onPress={toggleTheme}
+        activeOpacity={0.7}
+        hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
       >
         <Text style={styles.themeToggleIcon}>{theme === 'dark' ? '☀️' : '🌙'}</Text>
         <Text style={styles.themeToggleText}>{theme === 'dark' ? 'Light' : 'Dark'}</Text>

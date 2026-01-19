@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,6 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import Flashcard from './src/components/Flashcard';
 import GradientBorder from './src/components/GradientBorder';
+import VocabItem from './src/components/VocabItem';
 import { initDatabase } from './src/db/database';
 import {
   addVocabulary,
@@ -129,7 +131,7 @@ export default function App() {
   const isEditing = Boolean(editingId);
 
   // Get current theme colors
-  const colors = theme === 'dark' ? darkTheme : lightTheme;
+  const colors = useMemo(() => theme === 'dark' ? darkTheme : lightTheme, [theme]);
 
   // Initialize database on app start
   useEffect(() => {
@@ -557,6 +559,21 @@ export default function App() {
     }
   };
 
+  const renderVocabItem = useCallback(({ item }) => {
+    const mLabel = MONTHS.find(m => String(m.value) === String(item.month))?.label || item.month;
+    return (
+      <VocabItem
+        entry={item}
+        colors={colors}
+        theme={theme}
+        onEdit={handleEditEntry}
+        onDelete={confirmDeleteEntry}
+        deletingId={deletingId}
+        monthLabel={mLabel}
+      />
+    );
+  }, [colors, theme, deletingId]);
+
   const renderHome = () => (
     <View style={[styles.heroCard, { backgroundColor: colors.heroBg, borderColor: colors.primaryLight }]}>
       <TouchableOpacity
@@ -842,107 +859,10 @@ export default function App() {
             </View>
           </View>
 
-          {isLoadingList ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={[styles.loadingText, { color: colors.text }]}>Loading vocabulary...</Text>
-            </View>
-          ) : managementList.length === 0 ? (
-            <View style={styles.emptyStateContainer}>
-              <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>No vocabulary yet.</Text>
-            </View>
-          ) : (
-            managementList.map((entry) => (
-              <View
-                key={entry.id}
-                style={[
-                  styles.vocabItem,
-                  {
-                    borderColor: colors.border,
-                    backgroundColor: theme === 'dark' ? colors.surface : '#fff',
-                    borderRadius: 16,
-                    borderWidth: 1,
-                    marginHorizontal: 10,
-                    paddingHorizontal: 16,
-                  }
-                ]}
-              >
-                <View style={styles.vocabInfo}>
-                  <Text style={[styles.vocabName, { color: colors.text }]}>{entry.name}</Text>
-                  <Text style={[styles.vocabMeaning, { color: colors.textSecondary }]}>{entry.meaning}</Text>
-                  <Text style={[styles.vocabMeta, { color: colors.textMuted }]}>
-                    {formatMonthLabel(entry.month)} {entry.year} • Sort {entry.sortType}
-                  </Text>
-                </View>
-                <View style={styles.vocabActions}>
-                  <TouchableOpacity
-                    style={[styles.actionButton, { borderColor: colors.border }]}
-                    onPress={() => handleEditEntry(entry)}
-                  >
-                    <Text style={[styles.editAction, { color: colors.primary }]}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.actionButton, { borderColor: colors.border }]}
-                    onPress={() => confirmDeleteEntry(entry)}
-                    disabled={deletingId === entry.id}
-                  >
-                    {deletingId === entry.id ? (
-                      <ActivityIndicator color={colors.error} />
-                    ) : (
-                      <Text style={[styles.deleteAction, { color: colors.error }]}>Delete</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))
-          )}
+
         </View>
 
-        {
-          listStatus && (
-            <Text
-              style={[
-                styles.feedback,
-                listStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
-              ]}
-            >
-              {listStatus.message}
-            </Text>
-          )
-        }
 
-        {
-          managementMeta && managementMeta.totalPages > 1 && (
-            <View style={styles.paginationRow}>
-              <TouchableOpacity
-                style={[
-                  styles.paginationButton,
-                  { borderColor: colors.border },
-                  managementFilters.page === 1 && styles.disabledButton,
-                ]}
-                onPress={() => handleManagementPageChange('prev')}
-                disabled={managementFilters.page === 1}
-              >
-                <Text style={[styles.paginationText, { color: colors.text }]}>Prev</Text>
-              </TouchableOpacity>
-              <Text style={[styles.paginationMeta, { color: colors.text }]}>
-                Page {managementMeta.currentPage} of {managementMeta.totalPages}
-              </Text>
-              <TouchableOpacity
-                style={[
-                  styles.paginationButton,
-                  { borderColor: colors.border },
-                  managementMeta.currentPage >= managementMeta.totalPages &&
-                  styles.disabledButton,
-                ]}
-                onPress={() => handleManagementPageChange('next')}
-                disabled={managementMeta.currentPage >= managementMeta.totalPages}
-              >
-                <Text style={[styles.paginationText, { color: colors.text }]}>Next</Text>
-              </TouchableOpacity>
-            </View>
-          )
-        }
       </View >
     );
 
@@ -1173,6 +1093,67 @@ export default function App() {
     return <View style={[styles.card, { backgroundColor: colors.card, borderRadius: 12 }]}>{cardContent}</View>;
   };
 
+  const renderAddFooter = () => (
+    <View>
+      {listStatus && (
+        <Text
+          style={[
+            styles.feedback,
+            listStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
+          ]}
+        >
+          {listStatus.message}
+        </Text>
+      )}
+      {managementMeta && managementMeta.totalPages > 1 && (
+        <View style={styles.paginationRow}>
+          <TouchableOpacity
+            style={[
+              styles.paginationButton,
+              { borderColor: colors.border },
+              managementFilters.page === 1 && styles.disabledButton,
+            ]}
+            onPress={() => handleManagementPageChange('prev')}
+            disabled={managementFilters.page === 1}
+          >
+            <Text style={[styles.paginationText, { color: colors.text }]}>Prev</Text>
+          </TouchableOpacity>
+          <Text style={[styles.paginationMeta, { color: colors.text }]}>
+            Page {managementMeta.currentPage} of {managementMeta.totalPages}
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.paginationButton,
+              { borderColor: colors.border },
+              managementMeta.currentPage >= managementMeta.totalPages &&
+              styles.disabledButton,
+            ]}
+            onPress={() => handleManagementPageChange('next')}
+            disabled={managementMeta.currentPage >= managementMeta.totalPages}
+          >
+            <Text style={[styles.paginationText, { color: colors.text }]}>Next</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {isLoadingList && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>Loading vocabulary...</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const commonHeader = (
+    <View style={[styles.headerContainer, { borderBottomColor: colors.border }]}>
+      <Text style={[styles.heading, { color: colors.text }]}>Vocabulary Builder</Text>
+      <View style={[styles.quoteContainer, { backgroundColor: colors.quoteBg, borderLeftColor: colors.primary }]}>
+        <Text style={styles.quoteIcon}>💬</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{randomQuote}</Text>
+      </View>
+    </View>
+  );
+
   if (activeView === 'home') {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.heroBg }]}>
@@ -1182,19 +1163,49 @@ export default function App() {
     );
   }
 
+  if (activeView === 'add') {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        <FlatList
+          data={managementList}
+          renderItem={renderVocabItem}
+          keyExtractor={(item) => String(item.id)}
+          contentContainerStyle={[
+            styles.container,
+            { backgroundColor: colors.background, paddingBottom: 40 },
+          ]}
+          initialNumToRender={10}
+          maxToRenderPerBatch={10}
+          windowSize={5}
+          removeClippedSubviews={true}
+          ListHeaderComponent={
+            <View>
+              {commonHeader}
+              {renderAddSection()}
+            </View>
+          }
+          ListFooterComponent={renderAddFooter()}
+          ListEmptyComponent={
+            !isLoadingList && (
+              <View style={styles.emptyStateContainer}>
+                <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
+                  No vocabulary yet.
+                </Text>
+              </View>
+            )
+          }
+        />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <ScrollView contentInsetAdjustmentBehavior="automatic">
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-          <View style={[styles.headerContainer, { borderBottomColor: colors.border }]}>
-            <Text style={[styles.heading, { color: colors.text }]}>Vocabulary Builder</Text>
-            <View style={[styles.quoteContainer, { backgroundColor: colors.quoteBg, borderLeftColor: colors.primary }]}>
-              <Text style={styles.quoteIcon}>💬</Text>
-              <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{randomQuote}</Text>
-            </View>
-          </View>
-          {activeView === 'add' && renderAddSection()}
+          {commonHeader}
           {activeView === 'practice' && renderPracticeSection()}
         </View>
       </ScrollView>

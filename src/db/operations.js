@@ -171,3 +171,16 @@ export const clearAllVocabulary = async () => {
  * Get flashcards (same as getVocabulary but can have different logic if needed)
  */
 export const getFlashcards = getVocabulary;
+
+/**
+ * Get distinct years from vocabulary
+ */
+export const getAvailableYears = async () => {
+    try {
+        const result = await db.getAllAsync('SELECT DISTINCT year FROM vocabulary ORDER BY year DESC');
+        return result.map(row => row.year);
+    } catch (error) {
+        console.error('Error getting years:', error);
+        return [];
+    }
+};

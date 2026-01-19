@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+
   FlatList,
   ScrollView,
   StyleSheet,
@@ -9,10 +11,12 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
+
 import Flashcard from './src/components/Flashcard';
 import GradientBorder from './src/components/GradientBorder';
 import VocabItem from './src/components/VocabItem';
@@ -24,12 +28,15 @@ import {
   deleteVocabulary,
   clearAllVocabulary,
   getFlashcards,
+  getAvailableYears,
 } from './src/db/operations';
 import {
   validatePracticeFilters,
   validateVocabularyForm,
 } from './src/utils/validators';
 import { lightTheme, darkTheme } from './src/constants/theme';
+
+
 
 const SORT_OPTIONS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
 const MONTHS = [
@@ -46,15 +53,9 @@ const MONTHS = [
   { label: 'November', value: '11' },
   { label: 'December', value: '12' },
 ];
-const YEARS = Array.from({ length: 6 }, (_, idx) => `${2025 + idx}`);
-
 const now = new Date();
 const CURRENT_MONTH = String(now.getMonth() + 1);
-// Default to 2025 if current year is outside 2025-2030 range
-const currentYearNum = now.getFullYear();
-const CURRENT_YEAR = currentYearNum >= 2025 && currentYearNum <= 2030
-  ? String(currentYearNum)
-  : '2025';
+const CURRENT_YEAR = String(now.getFullYear());
 
 const MANAGEMENT_LIMIT = 50;
 
@@ -126,9 +127,31 @@ export default function App() {
   );
   const [managementMeta, setManagementMeta] = useState(null);
   const [showPracticeFilters, setShowPracticeFilters] = useState(false);
+  const [showManagementFilters, setShowManagementFilters] = useState(false);
   const [randomQuote, setRandomQuote] = useState(getRandomQuote());
+  const [isDbReady, setIsDbReady] = useState(false);
+  const [availableYears, setAvailableYears] = useState([CURRENT_YEAR]);
 
   const isEditing = Boolean(editingId);
+
+  // Animation for filter arrow
+  const arrowAnim = useRef(new Animated.Value(0)).current;
+
+
+  useEffect(() => {
+    Animated.timing(arrowAnim, {
+      toValue: showManagementFilters ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [showManagementFilters]);
+
+  const arrowRotation = arrowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+
+
 
   // Get current theme colors
   const colors = useMemo(() => theme === 'dark' ? darkTheme : lightTheme, [theme]);
@@ -140,6 +163,7 @@ export default function App() {
         console.log('Initializing local SQLite database...');
         await initDatabase();
         console.log('Database ready!');
+        setIsDbReady(true);
 
         // Check if we need to seed data
         try {
@@ -179,6 +203,12 @@ export default function App() {
     setListStatus(null);
     setIsLoadingList(true);
     try {
+      const distinctYears = await getAvailableYears();
+      const yearsSet = new Set(distinctYears.map(String));
+      yearsSet.add(CURRENT_YEAR);
+      const sortedYears = Array.from(yearsSet).sort((a, b) => Number(b) - Number(a));
+      setAvailableYears(sortedYears);
+
       const response = await getVocabulary({
         sortType: managementFilters.sortType,
         month: managementFilters.month ? Number(managementFilters.month) : undefined,
@@ -197,10 +227,10 @@ export default function App() {
   }, [managementFilters]);
 
   useEffect(() => {
-    if (activeView === 'add') {
+    if (activeView === 'add' && isDbReady) {
       loadManagementList();
     }
-  }, [activeView, loadManagementList]);
+  }, [activeView, loadManagementList, isDbReady]);
 
   // Auto-load 5 cards by default when practice view opens
   useEffect(() => {
@@ -644,64 +674,9 @@ export default function App() {
           value={form.meaning}
           onChangeText={(value) => handleInputChange('meaning', value)}
         />
-        <Text style={[styles.label, { color: colors.text }]}>Sort Type</Text>
-        <View style={[styles.chipRow, styles.wrap, { width: '100%' }]}>
-          {SORT_OPTIONS.map((option) => (
-            <TouchableOpacity
-              key={option}
-              style={[styles.chip, { flex: 1, minWidth: '11%' }, form.sortType === option && styles.activeChip]}
-              onPress={() => handleInputChange('sortType', option)}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  form.sortType === option && styles.activeChipText,
-                  { color: form.sortType === option ? '#fff' : colors.text },
-                ]}
-              >
-                {option}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
 
-        <View style={styles.row}>
-          <View style={styles.half}>
-            <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-            <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-              <Picker
-                selectedValue={form.month}
-                onValueChange={(value) => handleInputChange('month', value)}
-                style={{ color: colors.text }}
-              >
-                <Picker.Item label="Select month" value="" color={theme === 'dark' ? colors.text : undefined} />
-                {MONTHS.map((month) => (
-                  <Picker.Item
-                    key={`month-${month.value}`}
-                    label={month.label}
-                    value={month.value}
-                    color={theme === 'dark' ? colors.text : undefined}
-                  />
-                ))}
-              </Picker>
-            </View>
-          </View>
-          <View style={styles.half}>
-            <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-            <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-              <Picker
-                selectedValue={form.year}
-                onValueChange={(value) => handleInputChange('year', value)}
-                style={{ color: colors.text }}
-              >
-                <Picker.Item label="Select year" value="" color={theme === 'dark' ? colors.text : undefined} />
-                {YEARS.map((year) => (
-                  <Picker.Item key={`year-${year}`} label={year} value={year} color={theme === 'dark' ? colors.text : undefined} />
-                ))}
-              </Picker>
-            </View>
-          </View>
-        </View>
+
+
 
         {formStatus && (
           <Text
@@ -728,141 +703,125 @@ export default function App() {
           )}
         </TouchableOpacity>
 
-        <View style={styles.fullBleed}>
-          <View
-            style={[
-              styles.filterGroup,
-              {
-                backgroundColor: colors.filterBg,
-                borderColor: colors.border,
-                borderRadius: theme === 'dark' ? 16 : 12,
-              },
-            ]}
+        <TouchableOpacity
+          style={[styles.filterToggle, { backgroundColor: theme === 'dark' ? colors.surface : '#e0f2fe', marginTop: 24, marginBottom: 12 }]}
+          onPress={() => setShowManagementFilters((prev) => !prev)}
+        >
+          <Text style={[styles.filterToggleText, { color: theme === 'dark' ? colors.text : '#0369a1' }]}>
+            {showManagementFilters ? 'Hide Search & Filters' : 'Show Search & Filters'}
+          </Text>
+          <Animated.Text
+            style={{
+              color: theme === 'dark' ? colors.text : '#0369a1',
+              fontSize: 16,
+              fontWeight: 'bold',
+              transform: [{ rotate: arrowRotation }],
+            }}
           >
-            <View style={styles.filterHeader}>
-              <Text style={[styles.listTitle, { color: colors.text }]}>Search & Filter</Text>
-              <TouchableOpacity onPress={handleResetManagementFilters}>
-                <Text style={[styles.clearFilters, { color: colors.error }]}>Reset</Text>
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-              placeholder="Search vocabulary"
-              placeholderTextColor={colors.textMuted}
-              value={managementFilters.search}
-              onChangeText={(value) => handleManagementFilterChange('search', value)}
-            />
-            <View style={styles.row}>
-              <View style={styles.half}>
-                <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-                <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                  <Picker
-                    selectedValue={managementFilters.sortType}
-                    onValueChange={(value) =>
-                      handleManagementFilterChange('sortType', value)
-                    }
-                    style={{ color: colors.text }}
-                  >
-                    <Picker.Item label="All Letters" value="" color={theme === 'dark' ? colors.text : undefined} />
-                    {SORT_OPTIONS.map((option) => (
-                      <Picker.Item
-                        key={`manage-sort-${option}`}
-                        label={option}
-                        value={option}
-                        color={theme === 'dark' ? colors.text : undefined}
-                      />
-                    ))}
-                  </Picker>
+            ▼
+          </Animated.Text>
+        </TouchableOpacity>
+
+        {showManagementFilters && (
+          <View style={styles.fullBleed}>
+            <View
+              style={[
+                styles.filterGroup,
+                {
+                  backgroundColor: colors.filterBg,
+                  borderColor: colors.border,
+                  borderRadius: theme === 'dark' ? 16 : 12,
+                },
+              ]}
+            >
+              <View style={styles.filterHeader}>
+                <Text style={[styles.listTitle, { color: colors.text }]}>Search & Filter</Text>
+                <TouchableOpacity onPress={handleResetManagementFilters}>
+                  <Text style={[styles.clearFilters, { color: colors.error }]}>Reset</Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                placeholder="Search vocabulary"
+                placeholderTextColor={colors.textMuted}
+                value={managementFilters.search}
+                onChangeText={(value) => handleManagementFilterChange('search', value)}
+              />
+              <View style={styles.row}>
+                <View style={styles.half}>
+                  <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
+                  <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                    <Picker
+                      selectedValue={managementFilters.sortType}
+                      onValueChange={(value) =>
+                        handleManagementFilterChange('sortType', value)
+                      }
+                      style={{ color: colors.text }}
+                    >
+                      <Picker.Item label="All Letters" value="" color={theme === 'dark' ? colors.text : undefined} />
+                      {SORT_OPTIONS.map((option) => (
+                        <Picker.Item
+                          key={`manage-sort-${option}`}
+                          label={option}
+                          value={option}
+                          color={theme === 'dark' ? colors.text : undefined}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+                <View style={styles.half}>
+                  <Text style={[styles.label, { color: colors.text }]}>Month</Text>
+                  <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                    <Picker
+                      selectedValue={managementFilters.month}
+                      onValueChange={(value) =>
+                        handleManagementFilterChange('month', value)
+                      }
+                      style={{ color: colors.text }}
+                    >
+                      <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
+                      {MONTHS.map((month) => (
+                        <Picker.Item
+                          key={`manage-month-${month.value}`}
+                          label={month.label}
+                          value={month.value}
+                          color={theme === 'dark' ? colors.text : undefined}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
                 </View>
               </View>
-              <View style={styles.half}>
-                <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                  <Picker
-                    selectedValue={managementFilters.month}
-                    onValueChange={(value) =>
-                      handleManagementFilterChange('month', value)
-                    }
-                    style={{ color: colors.text }}
-                  >
-                    <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
-                    {MONTHS.map((month) => (
-                      <Picker.Item
-                        key={`manage-month-${month.value}`}
-                        label={month.label}
-                        value={month.value}
-                        color={theme === 'dark' ? colors.text : undefined}
-                      />
-                    ))}
-                  </Picker>
-                </View>
-              </View>
-            </View>
-            <View style={styles.row}>
-              <View style={styles.half}>
-                <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                  <Picker
-                    selectedValue={managementFilters.year}
-                    onValueChange={(value) =>
-                      handleManagementFilterChange('year', value)
-                    }
-                    style={{ color: colors.text }}
-                  >
-                    <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
-                    {YEARS.map((year) => (
-                      <Picker.Item
-                        key={`manage-year-${year}`}
-                        label={year}
-                        value={year}
-                        color={theme === 'dark' ? colors.text : undefined}
-                      />
-                    ))}
-                  </Picker>
+              <View style={styles.row}>
+                <View style={styles.half}>
+                  <Text style={[styles.label, { color: colors.text }]}>Year</Text>
+                  <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                    <Picker
+                      selectedValue={managementFilters.year}
+                      onValueChange={(value) =>
+                        handleManagementFilterChange('year', value)
+                      }
+                      style={{ color: colors.text }}
+                    >
+                      <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
+                      {availableYears.map((year) => (
+                        <Picker.Item
+                          key={`manage-year-${year}`}
+                          label={year}
+                          value={year}
+                          color={theme === 'dark' ? colors.text : undefined}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
                 </View>
               </View>
             </View>
           </View>
-        </View>
-
-        <View style={styles.fullBleed}>
-          <View style={[styles.listHeader, { paddingHorizontal: 20 }]}>
-            <Text style={[styles.listTitle, { color: colors.text }]}>Saved Vocabulary</Text>
-            <View style={styles.buttonGroup}>
-              <TouchableOpacity
-                style={[
-                  styles.clearAllButton,
-                  { borderColor: colors.error, backgroundColor: theme === 'dark' ? 'transparent' : '#fee2e2' },
-                  (isDeletingAll || isLoadingList) && styles.disabledButton,
-                ]}
-                onPress={() => {
-                  console.log('🗑️ Delete button pressed!');
-                  confirmDeleteAll();
-                }}
-                disabled={isDeletingAll || isLoadingList}
-                activeOpacity={0.6}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                {isDeletingAll ? (
-                  <ActivityIndicator color={colors.error} size="small" />
-                ) : (
-                  <Text style={[styles.clearAllButtonIcon, { color: colors.error }]}>🗑️</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.refreshButton, { borderColor: colors.border }]}
-                onPress={loadManagementList}
-                disabled={isLoadingList}
-              >
-                <Text style={[styles.refreshText, { color: colors.text }]}>
-                  {isLoadingList ? 'Refreshing…' : 'Refresh'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+        )}
 
 
-        </View>
 
 
       </View >
@@ -882,6 +841,36 @@ export default function App() {
 
     return <View style={[styles.card, { backgroundColor: colors.card }]}>{cardContent}</View>;
   };
+
+  const renderVocabListHeader = () => (
+    <View style={{ marginTop: 24, paddingHorizontal: 4 }}>
+      <View style={[styles.listHeader, { paddingHorizontal: 0 }]}>
+        <Text style={[styles.listTitle, { color: colors.text }]}>Saved Vocabulary</Text>
+        <View style={styles.buttonGroup}>
+          <TouchableOpacity
+            style={[
+              styles.clearAllButton,
+              { borderColor: colors.error, backgroundColor: theme === 'dark' ? 'transparent' : '#fee2e2' },
+              (isDeletingAll || isLoadingList) && styles.disabledButton,
+            ]}
+            onPress={() => {
+              confirmDeleteAll();
+            }}
+            disabled={isDeletingAll || isLoadingList}
+            activeOpacity={0.6}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {isDeletingAll ? (
+              <ActivityIndicator color={colors.error} size="small" />
+            ) : (
+              <Text style={[styles.clearAllButtonIcon, { color: colors.error }]}>🗑️</Text>
+            )}
+          </TouchableOpacity>
+
+        </View>
+      </View>
+    </View>
+  );
 
   const renderPracticeSection = () => {
     const cardContent = (
@@ -959,7 +948,7 @@ export default function App() {
                         style={{ color: colors.text }}
                       >
                         <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
-                        {YEARS.map((year) => (
+                        {availableYears.map((year) => (
                           <Picker.Item key={`filter-year-${year}`} label={year} value={year} color={theme === 'dark' ? colors.text : undefined} />
                         ))}
                       </Picker>
@@ -1185,6 +1174,7 @@ export default function App() {
             <View>
               {commonHeader}
               {renderAddSection()}
+              {renderVocabListHeader()}
             </View>
           }
           ListFooterComponent={renderAddFooter()}
@@ -1390,16 +1380,20 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   filterToggle: {
-    alignSelf: 'flex-end',
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: '#e0f2fe',
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 14,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     marginBottom: 12,
   },
   filterToggleText: {
     color: '#0369a1',
     fontWeight: '600',
+    fontSize: 15,
   },
   practiceFilters: {
     borderWidth: 1,

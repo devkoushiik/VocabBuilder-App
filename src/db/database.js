@@ -8,13 +8,7 @@ export const initDatabase = async () => {
   try {
     console.log('Initializing database...');
 
-    // Drop the old table if it exists (to fix column name issues)
-    try {
-      await db.execAsync('DROP TABLE IF EXISTS vocabulary');
-      console.log('Dropped old table (if existed)');
-    } catch (error) {
-      console.log('No old table to drop');
-    }
+
 
     // Create vocabulary table with correct schema
     await db.execAsync(`

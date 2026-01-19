@@ -120,6 +120,38 @@ export const deleteVocabulary = async (id) => {
   }
 };
 
+export const deleteAllVocabulary = async () => {
+  try {
+    const response = await fetch(`${API_URL}/api/v1/vocabulary/delete-all-vocabulary`, {
+      method: 'DELETE',
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    // Handle 204 No Content response (common for DELETE operations)
+    if (response.status === 204 || response.status === 200) {
+      const text = await response.text();
+      if (!text || text.trim() === '') {
+        return { deletedCount: 0, message: 'All vocabulary deleted successfully' };
+      }
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        return { deletedCount: 0, message: 'All vocabulary deleted successfully' };
+      }
+    }
+
+    return handleResponse(response);
+  } catch (error) {
+    console.error('Delete all vocabulary error:', error);
+    if (error.message) {
+      throw error;
+    }
+    throw new Error(`Network error: ${error.message || 'Failed to delete all vocabulary. Check your internet connection and API URL.'}`);
+  }
+};
+
 export const fetchVocabulary = async (params = {}) => {
   // Ensure limit is always a valid number (default to 5 if invalid/missing)
   const cleanedParams = { ...params };

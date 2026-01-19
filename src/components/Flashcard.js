@@ -1,10 +1,43 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Audio } from 'expo-av';
 
 const Flashcard = ({ card, theme, themeMode = 'light' }) => {
   const [showBack, setShowBack] = useState(false);
+  const [sound, setSound] = useState();
 
-  const handleToggle = () => setShowBack((prev) => !prev);
+  useEffect(() => {
+    let soundObj;
+    const loadSound = async () => {
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          { uri: 'https://codeskulptor-demos.commondatastorage.googleapis.com/pang/pop.mp3' }
+        );
+        soundObj = sound;
+        setSound(sound);
+      } catch (error) {
+        console.warn('Failed to load flashcard sound:', error);
+      }
+    };
+    loadSound();
+
+    return () => {
+      if (soundObj) {
+        soundObj.unloadAsync();
+      }
+    };
+  }, []);
+
+  const handleToggle = async () => {
+    try {
+      if (sound) {
+        await sound.replayAsync();
+      }
+    } catch (error) {
+      // Ignore audio errors during interaction
+    }
+    setShowBack((prev) => !prev);
+  };
 
   // Use theme colors if provided
   const colors = theme || {};

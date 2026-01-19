@@ -74,6 +74,10 @@ export const getVocabulary = async (params = {}) => {
         const countResult = await db.getFirstAsync(countQuery, values);
         const total = countResult?.count || 0;
 
+        // Get grand total (ignoring filters)
+        const grandTotalResult = await db.getFirstAsync('SELECT COUNT(*) as count FROM vocabulary');
+        const grandTotal = grandTotalResult?.count || 0;
+
         // Get paginated data
         const offset = (page - 1) * limit;
         const dataQuery = `
@@ -89,6 +93,7 @@ export const getVocabulary = async (params = {}) => {
             data: data || [],
             meta: {
                 totalItems: total,
+                grandTotal,
                 totalPages: Math.ceil(total / limit) || 1,
                 currentPage: page,
                 limit,

@@ -646,7 +646,7 @@ export default function App() {
 
   const renderAddSection = () => {
     const cardContent = (
-      <View style={[{ backgroundColor: colors.card, borderRadius: 18, padding: 20 }]}>
+      <View>
         {renderBackButton()}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Add Vocabulary</Text>
         {isEditing && (
@@ -703,123 +703,127 @@ export default function App() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[styles.filterToggle, { backgroundColor: theme === 'dark' ? colors.surface : '#e0f2fe', marginTop: 24, marginBottom: 12 }]}
-          onPress={() => setShowManagementFilters((prev) => !prev)}
-        >
-          <Text style={[styles.filterToggleText, { color: theme === 'dark' ? colors.text : '#0369a1' }]}>
-            {showManagementFilters ? 'Hide Search & Filters' : 'Show Search & Filters'}
-          </Text>
-          <Animated.Text
-            style={{
-              color: theme === 'dark' ? colors.text : '#0369a1',
-              fontSize: 16,
-              fontWeight: 'bold',
-              transform: [{ rotate: arrowRotation }],
-            }}
-          >
-            ▼
-          </Animated.Text>
-        </TouchableOpacity>
-
-        {showManagementFilters && (
-          <View style={styles.fullBleed}>
-            <View
-              style={[
-                styles.filterGroup,
-                {
-                  backgroundColor: colors.filterBg,
-                  borderColor: colors.border,
-                  borderRadius: theme === 'dark' ? 16 : 12,
-                },
-              ]}
+        <View style={{ marginTop: 24, marginBottom: 12 }}>
+          <View style={[
+            styles.filterGroup,
+            {
+              backgroundColor: colors.filterBg,
+              borderColor: colors.border,
+              borderRadius: theme === 'dark' ? 16 : 12,
+              padding: 0,
+              marginTop: 0,
+            },
+          ]}>
+            <TouchableOpacity
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                padding: 16,
+              }}
+              onPress={() => setShowManagementFilters((prev) => !prev)}
+              activeOpacity={0.7}
             >
-              <View style={styles.filterHeader}>
-                <Text style={[styles.listTitle, { color: colors.text }]}>Search & Filter</Text>
-                <TouchableOpacity onPress={handleResetManagementFilters}>
-                  <Text style={[styles.clearFilters, { color: colors.error }]}>Reset</Text>
-                </TouchableOpacity>
-              </View>
-              <TextInput
-                style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-                placeholder="Search vocabulary"
-                placeholderTextColor={colors.textMuted}
-                value={managementFilters.search}
-                onChangeText={(value) => handleManagementFilterChange('search', value)}
-              />
-              <View style={styles.row}>
-                <View style={styles.half}>
-                  <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-                  <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                    <Picker
-                      selectedValue={managementFilters.sortType}
-                      onValueChange={(value) =>
-                        handleManagementFilterChange('sortType', value)
-                      }
-                      style={{ color: colors.text }}
-                    >
-                      <Picker.Item label="All Letters" value="" color={theme === 'dark' ? colors.text : undefined} />
-                      {SORT_OPTIONS.map((option) => (
-                        <Picker.Item
-                          key={`manage-sort-${option}`}
-                          label={option}
-                          value={option}
-                          color={theme === 'dark' ? colors.text : undefined}
-                        />
-                      ))}
-                    </Picker>
+              <Text style={[styles.listTitle, { fontSize: 16, color: colors.text, paddingRight: 0 }]}>
+                Search & Filters
+              </Text>
+              <Animated.Text
+                style={{
+                  color: theme === 'dark' ? colors.text : '#0369a1',
+                  fontSize: 16,
+                  fontWeight: 'bold',
+                  transform: [{ rotate: arrowRotation }],
+                }}
+              >
+                ▼
+              </Animated.Text>
+            </TouchableOpacity>
+
+            {showManagementFilters && (
+              <View style={{ padding: 16, paddingTop: 0 }}>
+                <View style={{ alignItems: 'flex-end', marginBottom: 12 }}>
+                  <TouchableOpacity onPress={handleResetManagementFilters}>
+                    <Text style={[styles.clearFilters, { color: colors.error }]}>Reset Filters</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                  placeholder="Search vocabulary"
+                  placeholderTextColor={colors.textMuted}
+                  value={managementFilters.search}
+                  onChangeText={(value) => handleManagementFilterChange('search', value)}
+                />
+
+                <View style={styles.row}>
+                  <View style={styles.half}>
+                    <Text style={[styles.label, { color: colors.text }]}>Sort</Text>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                      <Picker
+                        selectedValue={managementFilters.sortType}
+                        onValueChange={(value) => handleManagementFilterChange('sortType', value)}
+                        style={{ color: colors.text }}
+                      >
+                        <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
+                        {SORT_OPTIONS.map((option) => (
+                          <Picker.Item
+                            key={`manage-sort-${option}`}
+                            label={option}
+                            value={option}
+                            color={theme === 'dark' ? colors.text : undefined}
+                          />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+                  <View style={styles.half}>
+                    <Text style={[styles.label, { color: colors.text }]}>Month</Text>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                      <Picker
+                        selectedValue={managementFilters.month}
+                        onValueChange={(value) => handleManagementFilterChange('month', value)}
+                        style={{ color: colors.text }}
+                      >
+                        <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
+                        {MONTHS.map((month) => (
+                          <Picker.Item
+                            key={`manage-month-${month.value}`}
+                            label={month.label}
+                            value={month.value}
+                            color={theme === 'dark' ? colors.text : undefined}
+                          />
+                        ))}
+                      </Picker>
+                    </View>
                   </View>
                 </View>
-                <View style={styles.half}>
-                  <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                  <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                    <Picker
-                      selectedValue={managementFilters.month}
-                      onValueChange={(value) =>
-                        handleManagementFilterChange('month', value)
-                      }
-                      style={{ color: colors.text }}
-                    >
-                      <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
-                      {MONTHS.map((month) => (
-                        <Picker.Item
-                          key={`manage-month-${month.value}`}
-                          label={month.label}
-                          value={month.value}
-                          color={theme === 'dark' ? colors.text : undefined}
-                        />
-                      ))}
-                    </Picker>
+
+                <View style={styles.row}>
+                  <View style={styles.half}>
+                    <Text style={[styles.label, { color: colors.text }]}>Year</Text>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                      <Picker
+                        selectedValue={managementFilters.year}
+                        onValueChange={(value) => handleManagementFilterChange('year', value)}
+                        style={{ color: colors.text }}
+                      >
+                        <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
+                        {availableYears.map((year) => (
+                          <Picker.Item
+                            key={`manage-year-${year}`}
+                            label={year}
+                            value={year}
+                            color={theme === 'dark' ? colors.text : undefined}
+                          />
+                        ))}
+                      </Picker>
+                    </View>
                   </View>
                 </View>
               </View>
-              <View style={styles.row}>
-                <View style={styles.half}>
-                  <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                  <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                    <Picker
-                      selectedValue={managementFilters.year}
-                      onValueChange={(value) =>
-                        handleManagementFilterChange('year', value)
-                      }
-                      style={{ color: colors.text }}
-                    >
-                      <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
-                      {availableYears.map((year) => (
-                        <Picker.Item
-                          key={`manage-year-${year}`}
-                          label={year}
-                          value={year}
-                          color={theme === 'dark' ? colors.text : undefined}
-                        />
-                      ))}
-                    </Picker>
-                  </View>
-                </View>
-              </View>
-            </View>
+            )}
           </View>
-        )}
+        </View>
 
 
 
@@ -828,18 +832,7 @@ export default function App() {
     );
 
     // Wrap with gradient border in dark mode
-    if (theme === 'dark') {
-      return (
-        <GradientBorder
-          colors={[colors.gradientStart, colors.gradientMiddle, colors.gradientEnd]}
-          borderRadius={12}
-        >
-          {cardContent}
-        </GradientBorder>
-      );
-    }
-
-    return <View style={[styles.card, { backgroundColor: colors.card }]}>{cardContent}</View>;
+    return <View style={{ marginBottom: 16 }}>{cardContent}</View>;
   };
 
   const renderVocabListHeader = () => (
@@ -851,12 +844,12 @@ export default function App() {
             style={[
               styles.clearAllButton,
               { borderColor: colors.error, backgroundColor: theme === 'dark' ? 'transparent' : '#fee2e2' },
-              (isDeletingAll || isLoadingList) && styles.disabledButton,
+              (isDeletingAll || isLoadingList || !managementMeta?.grandTotal) && styles.disabledButton,
             ]}
             onPress={() => {
               confirmDeleteAll();
             }}
-            disabled={isDeletingAll || isLoadingList}
+            disabled={isDeletingAll || isLoadingList || !managementMeta?.grandTotal}
             activeOpacity={0.6}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
@@ -869,6 +862,9 @@ export default function App() {
 
         </View>
       </View>
+      <Text style={{ fontSize: 13, color: colors.success, fontWeight: '600', marginTop: -4, marginBottom: 12 }}>
+        Total Vocabulary: {managementMeta?.grandTotal || 0}
+      </Text>
     </View>
   );
 

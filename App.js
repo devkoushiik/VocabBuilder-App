@@ -138,6 +138,28 @@ export default function App() {
         console.log('Initializing local SQLite database...');
         await initDatabase();
         console.log('Database ready!');
+
+        // Check if we need to seed data
+        try {
+          const { seedDatabase } = require('./src/db/seed');
+          const response = await getVocabulary({ limit: 1, page: 1 });
+
+          if (response.data.length === 0) {
+            console.log('Database is empty, seeding with sample data...');
+            await seedDatabase();
+            Alert.alert(
+              'Welcome! 🎉',
+              'I\'ve added 20 sample English-Bangla vocabulary words to get you started!',
+              [{ text: 'Great!' }]
+            );
+            // Reload list after seeding
+            if (activeView === 'add') {
+              loadManagementList();
+            }
+          }
+        } catch (seedError) {
+          console.log('Skipping seed:', seedError.message);
+        }
       } catch (error) {
         console.error('Failed to initialize database:', error);
         Alert.alert('Database Error', 'Failed to initialize local database. Please restart the app.');
@@ -784,125 +806,144 @@ export default function App() {
           </View>
         </View>
 
-        <View style={styles.listHeader}>
-          <Text style={[styles.listTitle, { color: colors.text }]}>Saved Vocabulary</Text>
-          <View style={styles.buttonGroup}>
-            <TouchableOpacity
-              style={[
-                styles.clearAllButton,
-                { borderColor: colors.error, backgroundColor: theme === 'dark' ? 'transparent' : '#fee2e2' },
-                (isDeletingAll || isLoadingList) && styles.disabledButton,
-              ]}
-              onPress={() => {
-                console.log('🗑️ Delete button pressed!');
-                confirmDeleteAll();
-              }}
-              disabled={isDeletingAll || isLoadingList}
-              activeOpacity={0.6}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              {isDeletingAll ? (
-                <ActivityIndicator color={colors.error} size="small" />
-              ) : (
-                <Text style={[styles.clearAllButtonIcon, { color: colors.error }]}>🗑️</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.refreshButton, { borderColor: colors.border }]}
-              onPress={loadManagementList}
-              disabled={isLoadingList}
-            >
-              <Text style={[styles.refreshText, { color: colors.text }]}>
-                {isLoadingList ? 'Refreshing…' : 'Refresh'}
-              </Text>
-            </TouchableOpacity>
+        <View style={styles.fullBleed}>
+          <View style={[styles.listHeader, { paddingHorizontal: 20 }]}>
+            <Text style={[styles.listTitle, { color: colors.text }]}>Saved Vocabulary</Text>
+            <View style={styles.buttonGroup}>
+              <TouchableOpacity
+                style={[
+                  styles.clearAllButton,
+                  { borderColor: colors.error, backgroundColor: theme === 'dark' ? 'transparent' : '#fee2e2' },
+                  (isDeletingAll || isLoadingList) && styles.disabledButton,
+                ]}
+                onPress={() => {
+                  console.log('🗑️ Delete button pressed!');
+                  confirmDeleteAll();
+                }}
+                disabled={isDeletingAll || isLoadingList}
+                activeOpacity={0.6}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                {isDeletingAll ? (
+                  <ActivityIndicator color={colors.error} size="small" />
+                ) : (
+                  <Text style={[styles.clearAllButtonIcon, { color: colors.error }]}>🗑️</Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.refreshButton, { borderColor: colors.border }]}
+                onPress={loadManagementList}
+                disabled={isLoadingList}
+              >
+                <Text style={[styles.refreshText, { color: colors.text }]}>
+                  {isLoadingList ? 'Refreshing…' : 'Refresh'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
+
+          {isLoadingList ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={[styles.loadingText, { color: colors.text }]}>Loading vocabulary...</Text>
+            </View>
+          ) : managementList.length === 0 ? (
+            <View style={styles.emptyStateContainer}>
+              <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>No vocabulary yet.</Text>
+            </View>
+          ) : (
+            managementList.map((entry) => (
+              <View
+                key={entry.id}
+                style={[
+                  styles.vocabItem,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: theme === 'dark' ? colors.surface : '#fff',
+                    borderRadius: 16,
+                    borderWidth: 1,
+                    marginHorizontal: 10,
+                    paddingHorizontal: 16,
+                  }
+                ]}
+              >
+                <View style={styles.vocabInfo}>
+                  <Text style={[styles.vocabName, { color: colors.text }]}>{entry.name}</Text>
+                  <Text style={[styles.vocabMeaning, { color: colors.textSecondary }]}>{entry.meaning}</Text>
+                  <Text style={[styles.vocabMeta, { color: colors.textMuted }]}>
+                    {formatMonthLabel(entry.month)} {entry.year} • Sort {entry.sortType}
+                  </Text>
+                </View>
+                <View style={styles.vocabActions}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, { borderColor: colors.border }]}
+                    onPress={() => handleEditEntry(entry)}
+                  >
+                    <Text style={[styles.editAction, { color: colors.primary }]}>Edit</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.actionButton, { borderColor: colors.border }]}
+                    onPress={() => confirmDeleteEntry(entry)}
+                    disabled={deletingId === entry.id}
+                  >
+                    {deletingId === entry.id ? (
+                      <ActivityIndicator color={colors.error} />
+                    ) : (
+                      <Text style={[styles.deleteAction, { color: colors.error }]}>Delete</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
         </View>
 
-        {isLoadingList ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.text }]}>Loading vocabulary...</Text>
-          </View>
-        ) : managementList.length === 0 ? (
-          <View style={styles.emptyStateContainer}>
-            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>No vocabulary yet.</Text>
-          </View>
-        ) : (
-          managementList.map((entry) => (
-            <View key={entry.id} style={[styles.vocabItem, { borderColor: colors.border, backgroundColor: theme === 'dark' ? colors.surface : '#fff' }]}>
-              <View style={styles.vocabInfo}>
-                <Text style={[styles.vocabName, { color: colors.text }]}>{entry.name}</Text>
-                <Text style={[styles.vocabMeaning, { color: colors.textSecondary }]}>{entry.meaning}</Text>
-                <Text style={[styles.vocabMeta, { color: colors.textMuted }]}>
-                  {formatMonthLabel(entry.month)} {entry.year} • Sort {entry.sortType}
-                </Text>
-              </View>
-              <View style={styles.vocabActions}>
-                <TouchableOpacity
-                  style={[styles.actionButton, { borderColor: colors.border }]}
-                  onPress={() => handleEditEntry(entry)}
-                >
-                  <Text style={[styles.editAction, { color: colors.primary }]}>Edit</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, { borderColor: colors.border }]}
-                  onPress={() => confirmDeleteEntry(entry)}
-                  disabled={deletingId === entry.id}
-                >
-                  {deletingId === entry.id ? (
-                    <ActivityIndicator color={colors.error} />
-                  ) : (
-                    <Text style={[styles.deleteAction, { color: colors.error }]}>Delete</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))
-        )}
-
-        {listStatus && (
-          <Text
-            style={[
-              styles.feedback,
-              listStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
-            ]}
-          >
-            {listStatus.message}
-          </Text>
-        )}
-
-        {managementMeta && managementMeta.totalPages > 1 && (
-          <View style={styles.paginationRow}>
-            <TouchableOpacity
+        {
+          listStatus && (
+            <Text
               style={[
-                styles.paginationButton,
-                { borderColor: colors.border },
-                managementFilters.page === 1 && styles.disabledButton,
+                styles.feedback,
+                listStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
               ]}
-              onPress={() => handleManagementPageChange('prev')}
-              disabled={managementFilters.page === 1}
             >
-              <Text style={[styles.paginationText, { color: colors.text }]}>Prev</Text>
-            </TouchableOpacity>
-            <Text style={[styles.paginationMeta, { color: colors.text }]}>
-              Page {managementMeta.currentPage} of {managementMeta.totalPages}
+              {listStatus.message}
             </Text>
-            <TouchableOpacity
-              style={[
-                styles.paginationButton,
-                { borderColor: colors.border },
-                managementMeta.currentPage >= managementMeta.totalPages &&
-                styles.disabledButton,
-              ]}
-              onPress={() => handleManagementPageChange('next')}
-              disabled={managementMeta.currentPage >= managementMeta.totalPages}
-            >
-              <Text style={[styles.paginationText, { color: colors.text }]}>Next</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </View>
+          )
+        }
+
+        {
+          managementMeta && managementMeta.totalPages > 1 && (
+            <View style={styles.paginationRow}>
+              <TouchableOpacity
+                style={[
+                  styles.paginationButton,
+                  { borderColor: colors.border },
+                  managementFilters.page === 1 && styles.disabledButton,
+                ]}
+                onPress={() => handleManagementPageChange('prev')}
+                disabled={managementFilters.page === 1}
+              >
+                <Text style={[styles.paginationText, { color: colors.text }]}>Prev</Text>
+              </TouchableOpacity>
+              <Text style={[styles.paginationMeta, { color: colors.text }]}>
+                Page {managementMeta.currentPage} of {managementMeta.totalPages}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.paginationButton,
+                  { borderColor: colors.border },
+                  managementMeta.currentPage >= managementMeta.totalPages &&
+                  styles.disabledButton,
+                ]}
+                onPress={() => handleManagementPageChange('next')}
+                disabled={managementMeta.currentPage >= managementMeta.totalPages}
+              >
+                <Text style={[styles.paginationText, { color: colors.text }]}>Next</Text>
+              </TouchableOpacity>
+            </View>
+          )
+        }
+      </View >
     );
 
     // Wrap with gradient border in dark mode
@@ -1532,6 +1573,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#1f2937',
+    paddingRight: 10,
   },
   buttonGroup: {
     flexDirection: 'row',

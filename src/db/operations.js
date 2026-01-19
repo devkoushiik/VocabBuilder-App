@@ -1,24 +1,26 @@
-import { eq, and, desc, sql, like } from 'drizzle-orm';
-import { db, vocabulary } from './database';
+import { db } from './database';
 
 /**
  * Add a new vocabulary entry
  */
 export const addVocabulary = async (data) => {
     try {
-        const now = new Date();
-        const newVocab = {
-            name: data.name.trim(),
-            meaning: data.meaning.trim(),
-            sortType: data.sortType.toUpperCase(),
-            month: data.month,
-            year: data.year,
-            createdAt: now,
-            updatedAt: now,
-        };
+        const { name, meaning, sortType, month, year } = data;
+        const now = Math.floor(Date.now() / 1000);
 
-        const result = await db.insert(vocabulary).values(newVocab).returning();
-        return result[0];
+        const result = await db.runAsync(
+            `INSERT INTO vocabulary (name, meaning, sortType, month, year, createdAt, updatedAt) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [name.trim(), meaning.trim(), sortType.toUpperCase(), month, year, now, now]
+        );
+
+        // Get the inserted record
+        const inserted = await db.getFirstAsync(
+            'SELECT * FROM vocabulary WHERE id = ?',
+            [result.lastInsertRowId]
+        );
+
+        return inserted;
     } catch (error) {
         console.error('Error adding vocabulary:', error);
         throw new Error('Failed to add vocabulary');
@@ -39,48 +41,52 @@ export const getVocabulary = async (params = {}) => {
             page = 1,
         } = params;
 
-        // Build where conditions
+        // Build WHERE clause
         const conditions = [];
+        const values = [];
 
         if (sortType) {
             const sortTypes = sortType.split(',').map(s => s.trim().toUpperCase());
-            conditions.push(sql`${vocabulary.sortType} IN (${sql.join(sortTypes.map(t => sql`${t}`), sql`, `)})`);
+            const placeholders = sortTypes.map(() => '?').join(',');
+            conditions.push(`sortType IN (${placeholders})`);
+            values.push(...sortTypes);
         }
 
         if (month) {
-            conditions.push(eq(vocabulary.month, month));
+            conditions.push('month = ?');
+            values.push(month);
         }
 
         if (year) {
-            conditions.push(eq(vocabulary.year, year));
+            conditions.push('year = ?');
+            values.push(year);
         }
 
         if (search) {
-            conditions.push(like(vocabulary.name, `%${search}%`));
+            conditions.push('name LIKE ?');
+            values.push(`%${search}%`);
         }
 
-        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+        const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
 
         // Get total count
-        const countResult = await db
-            .select({ count: sql`count(*)` })
-            .from(vocabulary)
-            .where(whereClause);
-
-        const total = Number(countResult[0]?.count || 0);
+        const countQuery = `SELECT COUNT(*) as count FROM vocabulary ${whereClause}`;
+        const countResult = await db.getFirstAsync(countQuery, values);
+        const total = countResult?.count || 0;
 
         // Get paginated data
         const offset = (page - 1) * limit;
-        const data = await db
-            .select()
-            .from(vocabulary)
-            .where(whereClause)
-            .orderBy(desc(vocabulary.createdAt))
-            .limit(limit)
-            .offset(offset);
+        const dataQuery = `
+      SELECT * FROM vocabulary 
+      ${whereClause}
+      ORDER BY createdAt DESC
+      LIMIT ? OFFSET ?
+    `;
+
+        const data = await db.getAllAsync(dataQuery, [...values, limit, offset]);
 
         return {
-            data,
+            data: data || [],
             meta: {
                 totalItems: total,
                 totalPages: Math.ceil(total / limit) || 1,
@@ -99,24 +105,26 @@ export const getVocabulary = async (params = {}) => {
  */
 export const updateVocabulary = async (id, data) => {
     try {
-        const result = await db
-            .update(vocabulary)
-            .set({
-                name: data.name.trim(),
-                meaning: data.meaning.trim(),
-                sortType: data.sortType.toUpperCase(),
-                month: data.month,
-                year: data.year,
-                updatedAt: new Date(),
-            })
-            .where(eq(vocabulary.id, id))
-            .returning();
+        const { name, meaning, sortType, month, year } = data;
+        const now = Math.floor(Date.now() / 1000);
 
-        if (!result[0]) {
+        await db.runAsync(
+            `UPDATE vocabulary 
+       SET name = ?, meaning = ?, sortType = ?, month = ?, year = ?, updatedAt = ?
+       WHERE id = ?`,
+            [name.trim(), meaning.trim(), sortType.toUpperCase(), month, year, now, id]
+        );
+
+        const updated = await db.getFirstAsync(
+            'SELECT * FROM vocabulary WHERE id = ?',
+            [id]
+        );
+
+        if (!updated) {
             throw new Error('Vocabulary not found');
         }
 
-        return result[0];
+        return updated;
     } catch (error) {
         console.error('Error updating vocabulary:', error);
         throw new Error('Failed to update vocabulary');
@@ -128,12 +136,12 @@ export const updateVocabulary = async (id, data) => {
  */
 export const deleteVocabulary = async (id) => {
     try {
-        const result = await db
-            .delete(vocabulary)
-            .where(eq(vocabulary.id, id))
-            .returning();
+        const result = await db.runAsync(
+            'DELETE FROM vocabulary WHERE id = ?',
+            [id]
+        );
 
-        if (!result[0]) {
+        if (result.changes === 0) {
             throw new Error('Vocabulary not found');
         }
     } catch (error) {
@@ -147,13 +155,10 @@ export const deleteVocabulary = async (id) => {
  */
 export const clearAllVocabulary = async () => {
     try {
-        const countBefore = await db
-            .select({ count: sql`count(*)` })
-            .from(vocabulary);
+        const countResult = await db.getFirstAsync('SELECT COUNT(*) as count FROM vocabulary');
+        const totalBefore = countResult?.count || 0;
 
-        const totalBefore = Number(countBefore[0]?.count || 0);
-
-        await db.delete(vocabulary);
+        await db.runAsync('DELETE FROM vocabulary');
 
         return { deletedCount: totalBefore };
     } catch (error) {

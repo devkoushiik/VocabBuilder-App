@@ -14,14 +14,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 import Flashcard from './src/components/Flashcard';
 import GradientBorder from './src/components/GradientBorder';
+import { initDatabase } from './src/db/database';
 import {
-  createVocabulary,
-  deleteVocabulary,
-  deleteAllVocabulary,
-  fetchFlashcards,
-  fetchVocabulary,
+  addVocabulary,
+  getVocabulary,
   updateVocabulary,
-} from './src/services/api';
+  deleteVocabulary,
+  clearAllVocabulary,
+  getFlashcards,
+} from './src/db/operations';
 import {
   validatePracticeFilters,
   validateVocabularyForm,
@@ -49,8 +50,8 @@ const now = new Date();
 const CURRENT_MONTH = String(now.getMonth() + 1);
 // Default to 2025 if current year is outside 2025-2030 range
 const currentYearNum = now.getFullYear();
-const CURRENT_YEAR = currentYearNum >= 2025 && currentYearNum <= 2030 
-  ? String(currentYearNum) 
+const CURRENT_YEAR = currentYearNum >= 2025 && currentYearNum <= 2030
+  ? String(currentYearNum)
   : '2025';
 
 const MANAGEMENT_LIMIT = 50;
@@ -126,10 +127,25 @@ export default function App() {
   const [randomQuote, setRandomQuote] = useState(getRandomQuote());
 
   const isEditing = Boolean(editingId);
-  
+
   // Get current theme colors
   const colors = theme === 'dark' ? darkTheme : lightTheme;
-  
+
+  // Initialize database on app start
+  useEffect(() => {
+    const initDB = async () => {
+      try {
+        console.log('Initializing local SQLite database...');
+        await initDatabase();
+        console.log('Database ready!');
+      } catch (error) {
+        console.error('Failed to initialize database:', error);
+        Alert.alert('Database Error', 'Failed to initialize local database. Please restart the app.');
+      }
+    };
+    initDB();
+  }, []);
+
   // Toggle theme
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -139,9 +155,13 @@ export default function App() {
     setListStatus(null);
     setIsLoadingList(true);
     try {
-      const response = await fetchVocabulary({
-        ...managementFilters,
+      const response = await getVocabulary({
+        sortType: managementFilters.sortType,
+        month: managementFilters.month ? Number(managementFilters.month) : undefined,
+        year: managementFilters.year ? Number(managementFilters.year) : undefined,
+        search: managementFilters.search,
         limit: MANAGEMENT_LIMIT,
+        page: managementFilters.page,
       });
       setManagementList(response.data);
       setManagementMeta(response.meta);
@@ -231,7 +251,7 @@ export default function App() {
         await updateVocabulary(editingId, payload);
         setFormStatus({ type: 'success', message: 'Vocabulary updated!' });
       } else {
-        await createVocabulary(payload);
+        await addVocabulary(payload);
         setFormStatus({ type: 'success', message: 'Vocabulary saved!' });
       }
       setForm(defaultForm);
@@ -246,63 +266,51 @@ export default function App() {
 
   const handleLoadFlashcards = useCallback(async () => {
     setPracticeStatus(null);
-    
+
     // Ensure limit has a default value before validation
     const filtersToValidate = {
       ...filters,
       limit: filters.limit || '5',
     };
-    
+
     const error = validatePracticeFilters(filtersToValidate);
     if (error) {
       setPracticeStatus({ type: 'error', message: error });
       return;
     }
 
-    // Build base params - fetch batches of up to 50 items (API max)
-    const baseParams = {
-      limit: 50,
+    // Build params for local database
+    const params = {
+      limit: 1000, // Get a large batch from local DB (no API limit)
     };
 
     // Only add optional filters if they have values
     if (filters.sortType && filters.sortType.trim() !== '') {
-      baseParams.sortType = filters.sortType.trim();
+      params.sortType = filters.sortType.trim();
     }
-    
+
     if (filters.month && filters.month !== '') {
       const monthNum = Number(filters.month);
       if (!Number.isNaN(monthNum)) {
-        baseParams.month = monthNum;
+        params.month = monthNum;
       }
     }
-    
+
     if (filters.year && filters.year !== '') {
       const yearNum = Number(filters.year);
       if (!Number.isNaN(yearNum)) {
-        baseParams.year = yearNum;
+        params.year = yearNum;
       }
     }
 
     try {
       setIsLoadingCards(true);
-      const aggregated = [];
-      let page = 1;
-      let totalPagesFromApi = 1;
+      const response = await getFlashcards(params);
+      const allData = response.data || [];
 
-      do {
-        const response = await fetchFlashcards({ ...baseParams, page });
-        const batch = response.data || [];
-        aggregated.push(...batch);
-        totalPagesFromApi = response?.meta?.totalPages || 1;
-        if (batch.length === 0 || page >= totalPagesFromApi) {
-          break;
-        }
-        page += 1;
-      } while (page <= totalPagesFromApi);
-
-      const allData = aggregated;
       setAllFlashcards(allData);
       setCurrentCardIndex(0); // Reset to first page
+
       if (allData.length === 0) {
         setPracticeStatus({
           type: 'error',
@@ -315,9 +323,9 @@ export default function App() {
         });
       }
     } catch (err) {
-      setPracticeStatus({ 
-        type: 'error', 
-        message: err.message || 'Failed to load flashcards. Please try again.' 
+      setPracticeStatus({
+        type: 'error',
+        message: err.message || 'Failed to load flashcards. Please try again.'
       });
     } finally {
       setIsLoadingCards(false);
@@ -328,7 +336,7 @@ export default function App() {
     const newLimit = String(value);
     handleFilterChange('limit', newLimit);
     setCurrentCardIndex(0); // Reset to first page when limit changes
-    
+
     // Auto-load data when range button is clicked
     setTimeout(() => {
       handleLoadFlashcards();
@@ -406,7 +414,7 @@ export default function App() {
       month: String(entry.month || ''),
       year: String(entry.year || ''),
     });
-    setEditingId(entry._id);
+    setEditingId(entry.id);
     setFormStatus({ type: 'success', message: `Editing "${entry.name}"` });
   };
 
@@ -417,6 +425,10 @@ export default function App() {
   };
 
   const handleDeleteEntry = async (id) => {
+    if (!id) {
+      setFormStatus({ type: 'error', message: 'Cannot delete: Invalid vocabulary ID.' });
+      return;
+    }
     try {
       setDeletingId(id);
       await deleteVocabulary(id);
@@ -441,7 +453,7 @@ export default function App() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => handleDeleteEntry(entry._id),
+          onPress: () => handleDeleteEntry(entry.id),
         },
       ]
     );
@@ -453,19 +465,19 @@ export default function App() {
     console.log('isLoadingList:', isLoadingList);
     console.log('managementMeta:', managementMeta);
     console.log('managementList.length:', managementList.length);
-    
+
     if (isDeletingAll || isLoadingList) {
       console.log('Button is disabled, returning early');
       return;
     }
-    
+
     try {
       Alert.alert(
         'Clear All Vocabulary',
         'Are you sure you want to delete ALL vocabulary? This action cannot be undone.',
         [
-          { 
-            text: 'Cancel', 
+          {
+            text: 'Cancel',
             style: 'cancel',
             onPress: () => console.log('User cancelled deletion')
           },
@@ -495,28 +507,28 @@ export default function App() {
     setListStatus(null);
     try {
       if (__DEV__) {
-        console.log('Calling deleteAllVocabulary API...');
+        console.log('Calling clearAllVocabulary...');
       }
-      const result = await deleteAllVocabulary();
+      const result = await clearAllVocabulary();
       if (__DEV__) {
-        console.log('deleteAllVocabulary result:', result);
+        console.log('clearAllVocabulary result:', result);
       }
-      
+
       // Reset filters and reload list
       setManagementFilters(defaultManagementFilters);
       await loadManagementList();
-      
-      setListStatus({ 
-        type: 'success', 
-        message: `All vocabulary deleted successfully. ${result?.deletedCount || 0} items removed.` 
+
+      setListStatus({
+        type: 'success',
+        message: `All vocabulary deleted successfully. ${result?.deletedCount || 0} items removed.`
       });
       setForm(defaultForm);
       setEditingId(null);
     } catch (err) {
       console.error('Error deleting all vocabulary:', err);
-      setListStatus({ 
-        type: 'error', 
-        message: err.message || 'Failed to delete all vocabulary. Please try again.' 
+      setListStatus({
+        type: 'error',
+        message: err.message || 'Failed to delete all vocabulary. Please try again.'
       });
     } finally {
       setIsDeletingAll(false);
@@ -565,177 +577,66 @@ export default function App() {
     const cardContent = (
       <View style={[{ backgroundColor: colors.card, borderRadius: 18, padding: 20 }]}>
         {renderBackButton()}
-      <Text style={[styles.sectionTitle, { color: colors.text }]}>Add Vocabulary</Text>
-      {isEditing && (
-        <View style={[styles.editBanner, { backgroundColor: theme === 'dark' ? colors.surface : '#dbeafe' }]}>
-          <Text style={[styles.editBannerText, { color: theme === 'dark' ? colors.text : '#1d4ed8' }]}>
-            Editing "{form.name || 'Vocabulary'}"
-          </Text>
-          <TouchableOpacity onPress={handleCancelEdit}>
-            <Text style={[styles.editBannerAction, { color: colors.error }]}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      <TextInput
-        style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-        placeholder="Vocabulary"
-        placeholderTextColor={colors.textMuted}
-        value={form.name}
-        onChangeText={(value) => handleInputChange('name', value)}
-      />
-      <TextInput
-        style={[styles.input, styles.textarea, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-        placeholder="Meaning"
-        placeholderTextColor={colors.textMuted}
-        multiline
-        value={form.meaning}
-        onChangeText={(value) => handleInputChange('meaning', value)}
-      />
-      <Text style={[styles.label, { color: colors.text }]}>Sort Type</Text>
-      <View style={[styles.chipRow, styles.wrap, { width: '100%' }]}>
-        {SORT_OPTIONS.map((option) => (
-          <TouchableOpacity
-            key={option}
-            style={[styles.chip, { flex: 1, minWidth: '11%' }, form.sortType === option && styles.activeChip]}
-            onPress={() => handleInputChange('sortType', option)}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                form.sortType === option && styles.activeChipText,
-                { color: form.sortType === option ? '#fff' : colors.text },
-              ]}
-            >
-              {option}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Add Vocabulary</Text>
+        {isEditing && (
+          <View style={[styles.editBanner, { backgroundColor: theme === 'dark' ? colors.surface : '#dbeafe' }]}>
+            <Text style={[styles.editBannerText, { color: theme === 'dark' ? colors.text : '#1d4ed8' }]}>
+              Editing "{form.name || 'Vocabulary'}"
             </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <View style={styles.row}>
-        <View style={styles.half}>
-          <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-          <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-            <Picker
-              selectedValue={form.month}
-              onValueChange={(value) => handleInputChange('month', value)}
-              style={{ color: colors.text }}
-            >
-              <Picker.Item label="Select month" value="" color={theme === 'dark' ? colors.text : undefined} />
-              {MONTHS.map((month) => (
-                <Picker.Item
-                  key={`month-${month.value}`}
-                  label={month.label}
-                  value={month.value}
-                  color={theme === 'dark' ? colors.text : undefined}
-                />
-              ))}
-            </Picker>
+            <TouchableOpacity onPress={handleCancelEdit}>
+              <Text style={[styles.editBannerAction, { color: colors.error }]}>Cancel</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-        <View style={styles.half}>
-          <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-          <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-            <Picker
-              selectedValue={form.year}
-              onValueChange={(value) => handleInputChange('year', value)}
-              style={{ color: colors.text }}
-            >
-              <Picker.Item label="Select year" value="" color={theme === 'dark' ? colors.text : undefined} />
-              {YEARS.map((year) => (
-                <Picker.Item key={`year-${year}`} label={year} value={year} color={theme === 'dark' ? colors.text : undefined} />
-              ))}
-            </Picker>
-          </View>
-        </View>
-      </View>
-
-      {formStatus && (
-        <Text
-          style={[
-            styles.feedback,
-            formStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
-          ]}
-        >
-          {formStatus.message}
-        </Text>
-      )}
-
-      <TouchableOpacity
-        style={[styles.button, isSaving && styles.disabledButton]}
-        onPress={handleSaveVocabulary}
-        disabled={isSaving}
-      >
-        {isSaving ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>
-            {isEditing ? 'Update Vocabulary' : 'Save Vocabulary'}
-          </Text>
         )}
-      </TouchableOpacity>
-
-      <View style={styles.fullBleed}>
-        <View
-          style={[
-            styles.filterGroup,
-            {
-              backgroundColor: colors.filterBg,
-              borderColor: colors.border,
-              borderRadius: theme === 'dark' ? 16 : 12,
-            },
-          ]}
-        >
-        <View style={styles.filterHeader}>
-          <Text style={[styles.listTitle, { color: colors.text }]}>Search & Filter</Text>
-          <TouchableOpacity onPress={handleResetManagementFilters}>
-            <Text style={[styles.clearFilters, { color: colors.error }]}>Reset</Text>
-          </TouchableOpacity>
-        </View>
         <TextInput
           style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-          placeholder="Search vocabulary"
+          placeholder="Vocabulary"
           placeholderTextColor={colors.textMuted}
-          value={managementFilters.search}
-          onChangeText={(value) => handleManagementFilterChange('search', value)}
+          value={form.name}
+          onChangeText={(value) => handleInputChange('name', value)}
         />
-        <View style={styles.row}>
-          <View style={styles.half}>
-            <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-            <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-              <Picker
-                selectedValue={managementFilters.sortType}
-                onValueChange={(value) =>
-                  handleManagementFilterChange('sortType', value)
-                }
-                style={{ color: colors.text }}
+        <TextInput
+          style={[styles.input, styles.textarea, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+          placeholder="Meaning"
+          placeholderTextColor={colors.textMuted}
+          multiline
+          value={form.meaning}
+          onChangeText={(value) => handleInputChange('meaning', value)}
+        />
+        <Text style={[styles.label, { color: colors.text }]}>Sort Type</Text>
+        <View style={[styles.chipRow, styles.wrap, { width: '100%' }]}>
+          {SORT_OPTIONS.map((option) => (
+            <TouchableOpacity
+              key={option}
+              style={[styles.chip, { flex: 1, minWidth: '11%' }, form.sortType === option && styles.activeChip]}
+              onPress={() => handleInputChange('sortType', option)}
+            >
+              <Text
+                style={[
+                  styles.chipText,
+                  form.sortType === option && styles.activeChipText,
+                  { color: form.sortType === option ? '#fff' : colors.text },
+                ]}
               >
-                <Picker.Item label="All Letters" value="" color={theme === 'dark' ? colors.text : undefined} />
-                {SORT_OPTIONS.map((option) => (
-                  <Picker.Item
-                    key={`manage-sort-${option}`}
-                    label={option}
-                    value={option}
-                    color={theme === 'dark' ? colors.text : undefined}
-                  />
-                ))}
-              </Picker>
-            </View>
-          </View>
+                {option}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.row}>
           <View style={styles.half}>
             <Text style={[styles.label, { color: colors.text }]}>Month</Text>
             <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
               <Picker
-                selectedValue={managementFilters.month}
-                onValueChange={(value) =>
-                  handleManagementFilterChange('month', value)
-                }
+                selectedValue={form.month}
+                onValueChange={(value) => handleInputChange('month', value)}
                 style={{ color: colors.text }}
               >
-                <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
+                <Picker.Item label="Select month" value="" color={theme === 'dark' ? colors.text : undefined} />
                 {MONTHS.map((month) => (
                   <Picker.Item
-                    key={`manage-month-${month.value}`}
+                    key={`month-${month.value}`}
                     label={month.label}
                     value={month.value}
                     color={theme === 'dark' ? colors.text : undefined}
@@ -744,229 +645,109 @@ export default function App() {
               </Picker>
             </View>
           </View>
-        </View>
-        <View style={styles.row}>
           <View style={styles.half}>
             <Text style={[styles.label, { color: colors.text }]}>Year</Text>
             <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
               <Picker
-                selectedValue={managementFilters.year}
-                onValueChange={(value) =>
-                  handleManagementFilterChange('year', value)
-                }
+                selectedValue={form.year}
+                onValueChange={(value) => handleInputChange('year', value)}
                 style={{ color: colors.text }}
               >
-                <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
+                <Picker.Item label="Select year" value="" color={theme === 'dark' ? colors.text : undefined} />
                 {YEARS.map((year) => (
-                  <Picker.Item
-                    key={`manage-year-${year}`}
-                    label={year}
-                    value={year}
-                    color={theme === 'dark' ? colors.text : undefined}
-                  />
+                  <Picker.Item key={`year-${year}`} label={year} value={year} color={theme === 'dark' ? colors.text : undefined} />
                 ))}
               </Picker>
             </View>
           </View>
         </View>
-        </View>
-      </View>
 
-      <View style={styles.listHeader}>
-        <Text style={[styles.listTitle, { color: colors.text }]}>Saved Vocabulary</Text>
-        <View style={styles.buttonGroup}>
-          <TouchableOpacity
+        {formStatus && (
+          <Text
             style={[
-              styles.clearAllButton,
-              { borderColor: colors.error, backgroundColor: theme === 'dark' ? 'transparent' : '#fee2e2' },
-              (isDeletingAll || isLoadingList) && styles.disabledButton,
+              styles.feedback,
+              formStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
             ]}
-            onPress={() => {
-              console.log('🗑️ Delete button pressed!');
-              confirmDeleteAll();
-            }}
-            disabled={isDeletingAll || isLoadingList}
-            activeOpacity={0.6}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            {isDeletingAll ? (
-              <ActivityIndicator color={colors.error} size="small" />
-            ) : (
-              <Text style={[styles.clearAllButtonIcon, { color: colors.error }]}>🗑️</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.refreshButton, { borderColor: colors.border }]}
-            onPress={loadManagementList}
-            disabled={isLoadingList}
-          >
-            <Text style={[styles.refreshText, { color: colors.text }]}>
-              {isLoadingList ? 'Refreshing…' : 'Refresh'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {isLoadingList ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.text }]}>Loading vocabulary...</Text>
-        </View>
-      ) : managementList.length === 0 ? (
-        <View style={styles.emptyStateContainer}>
-          <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>No vocabulary yet.</Text>
-        </View>
-      ) : (
-        managementList.map((entry) => (
-          <View key={entry._id} style={[styles.vocabItem, { borderColor: colors.border, backgroundColor: theme === 'dark' ? colors.surface : '#fff' }]}>
-            <View style={styles.vocabInfo}>
-              <Text style={[styles.vocabName, { color: colors.text }]}>{entry.name}</Text>
-              <Text style={[styles.vocabMeaning, { color: colors.textSecondary }]}>{entry.meaning}</Text>
-              <Text style={[styles.vocabMeta, { color: colors.textMuted }]}>
-                {formatMonthLabel(entry.month)} {entry.year} • Sort {entry.sortType}
-              </Text>
-            </View>
-            <View style={styles.vocabActions}>
-              <TouchableOpacity
-                style={[styles.actionButton, { borderColor: colors.border }]}
-                onPress={() => handleEditEntry(entry)}
-              >
-                <Text style={[styles.editAction, { color: colors.primary }]}>Edit</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, { borderColor: colors.border }]}
-                onPress={() => confirmDeleteEntry(entry)}
-                disabled={deletingId === entry._id}
-              >
-                {deletingId === entry._id ? (
-                  <ActivityIndicator color={colors.error} />
-                ) : (
-                  <Text style={[styles.deleteAction, { color: colors.error }]}>Delete</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))
-      )}
-
-      {listStatus && (
-        <Text
-          style={[
-            styles.feedback,
-            listStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
-          ]}
-        >
-          {listStatus.message}
-        </Text>
-      )}
-
-      {managementMeta && managementMeta.totalPages > 1 && (
-        <View style={styles.paginationRow}>
-          <TouchableOpacity
-            style={[
-              styles.paginationButton,
-              { borderColor: colors.border },
-              managementFilters.page === 1 && styles.disabledButton,
-            ]}
-            onPress={() => handleManagementPageChange('prev')}
-            disabled={managementFilters.page === 1}
-          >
-            <Text style={[styles.paginationText, { color: colors.text }]}>Prev</Text>
-          </TouchableOpacity>
-          <Text style={[styles.paginationMeta, { color: colors.text }]}>
-            Page {managementMeta.currentPage} of {managementMeta.totalPages}
+            {formStatus.message}
           </Text>
-          <TouchableOpacity
-            style={[
-              styles.paginationButton,
-              { borderColor: colors.border },
-              managementMeta.currentPage >= managementMeta.totalPages &&
-                styles.disabledButton,
-            ]}
-            onPress={() => handleManagementPageChange('next')}
-            disabled={managementMeta.currentPage >= managementMeta.totalPages}
-          >
-            <Text style={[styles.paginationText, { color: colors.text }]}>Next</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      </View>
-    );
-    
-    // Wrap with gradient border in dark mode
-    if (theme === 'dark') {
-      return (
-        <GradientBorder
-          colors={[colors.gradientStart, colors.gradientMiddle, colors.gradientEnd]}
-          borderRadius={12}
-        >
-          {cardContent}
-        </GradientBorder>
-      );
-    }
-    
-    return <View style={[styles.card, { backgroundColor: colors.card }]}>{cardContent}</View>;
-  };
+        )}
 
-  const renderPracticeSection = () => {
-    const cardContent = (
-      <View style={[{ backgroundColor: colors.card, borderRadius: 12, padding: 0 }]}>
-      <View style={{ padding: 20, paddingBottom: 0 }}>
-        {renderBackButton()}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Practice Flashcards</Text>
         <TouchableOpacity
-          style={[styles.filterToggle, { backgroundColor: theme === 'dark' ? colors.surface : '#e0f2fe' }]}
-          onPress={() => setShowPracticeFilters((prev) => !prev)}
+          style={[styles.button, isSaving && styles.disabledButton]}
+          onPress={handleSaveVocabulary}
+          disabled={isSaving}
         >
-          <Text style={[styles.filterToggleText, { color: theme === 'dark' ? colors.text : '#0369a1' }]}>
-            {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
-          </Text>
+          {isSaving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>
+              {isEditing ? 'Update Vocabulary' : 'Save Vocabulary'}
+            </Text>
+          )}
         </TouchableOpacity>
 
-        {showPracticeFilters && (
-          <View style={styles.fullBleed}>
-            <View
-              style={[
-                styles.practiceFilters,
-                {
-                  backgroundColor: colors.filterBg,
-                  borderColor: colors.border,
-                  borderRadius: theme === 'dark' ? 16 : 12,
-                },
-              ]}
-            >
-            <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-            <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-              <Picker
-                selectedValue={filters.sortType}
-                onValueChange={(value) => handleFilterChange('sortType', value)}
-                style={{ color: colors.text }}
-              >
-                <Picker.Item label="All Letters" value="" color={theme === 'dark' ? colors.text : undefined} />
-                {SORT_OPTIONS.map((option) => (
-                  <Picker.Item
-                    key={`filter-sort-${option}`}
-                    label={option}
-                    value={option}
-                    color={theme === 'dark' ? colors.text : undefined}
-                  />
-                ))}
-              </Picker>
+        <View style={styles.fullBleed}>
+          <View
+            style={[
+              styles.filterGroup,
+              {
+                backgroundColor: colors.filterBg,
+                borderColor: colors.border,
+                borderRadius: theme === 'dark' ? 16 : 12,
+              },
+            ]}
+          >
+            <View style={styles.filterHeader}>
+              <Text style={[styles.listTitle, { color: colors.text }]}>Search & Filter</Text>
+              <TouchableOpacity onPress={handleResetManagementFilters}>
+                <Text style={[styles.clearFilters, { color: colors.error }]}>Reset</Text>
+              </TouchableOpacity>
             </View>
-
+            <TextInput
+              style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+              placeholder="Search vocabulary"
+              placeholderTextColor={colors.textMuted}
+              value={managementFilters.search}
+              onChangeText={(value) => handleManagementFilterChange('search', value)}
+            />
             <View style={styles.row}>
+              <View style={styles.half}>
+                <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
+                <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                  <Picker
+                    selectedValue={managementFilters.sortType}
+                    onValueChange={(value) =>
+                      handleManagementFilterChange('sortType', value)
+                    }
+                    style={{ color: colors.text }}
+                  >
+                    <Picker.Item label="All Letters" value="" color={theme === 'dark' ? colors.text : undefined} />
+                    {SORT_OPTIONS.map((option) => (
+                      <Picker.Item
+                        key={`manage-sort-${option}`}
+                        label={option}
+                        value={option}
+                        color={theme === 'dark' ? colors.text : undefined}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+              </View>
               <View style={styles.half}>
                 <Text style={[styles.label, { color: colors.text }]}>Month</Text>
                 <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
                   <Picker
-                    selectedValue={filters.month}
-                    onValueChange={(value) => handleFilterChange('month', value)}
+                    selectedValue={managementFilters.month}
+                    onValueChange={(value) =>
+                      handleManagementFilterChange('month', value)
+                    }
                     style={{ color: colors.text }}
                   >
                     <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
                     {MONTHS.map((month) => (
                       <Picker.Item
-                        key={`filter-month-${month.value}`}
+                        key={`manage-month-${month.value}`}
                         label={month.label}
                         value={month.value}
                         color={theme === 'dark' ? colors.text : undefined}
@@ -975,136 +756,155 @@ export default function App() {
                   </Picker>
                 </View>
               </View>
+            </View>
+            <View style={styles.row}>
               <View style={styles.half}>
                 <Text style={[styles.label, { color: colors.text }]}>Year</Text>
                 <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
                   <Picker
-                    selectedValue={filters.year}
-                    onValueChange={(value) => handleFilterChange('year', value)}
+                    selectedValue={managementFilters.year}
+                    onValueChange={(value) =>
+                      handleManagementFilterChange('year', value)
+                    }
                     style={{ color: colors.text }}
                   >
                     <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
                     {YEARS.map((year) => (
-                      <Picker.Item key={`filter-year-${year}`} label={year} value={year} color={theme === 'dark' ? colors.text : undefined} />
+                      <Picker.Item
+                        key={`manage-year-${year}`}
+                        label={year}
+                        value={year}
+                        color={theme === 'dark' ? colors.text : undefined}
+                      />
                     ))}
                   </Picker>
                 </View>
               </View>
             </View>
-            </View>
           </View>
-        )}
-
-        <Text style={[styles.label, { color: colors.text }]}>Range (cards per session)</Text>
-        <View style={styles.rangeRow}>
-          {[5, 10, 15].map((value) => (
-            <TouchableOpacity
-              key={`range-${value}`}
-              style={[
-                styles.rangeButton,
-                filters.limit === String(value) && styles.rangeButtonActive,
-                isLoadingCards && styles.disabledButton,
-              ]}
-              onPress={() => handleQuickRange(value)}
-              disabled={isLoadingCards}
-            >
-              {isLoadingCards && filters.limit === String(value) ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text
-                  style={[
-                    styles.rangeButtonText,
-                    filters.limit === String(value) && styles.rangeButtonTextActive,
-                  ]}
-                >
-                  {value} cards
-                </Text>
-              )}
-            </TouchableOpacity>
-          ))}
         </View>
 
-        {practiceStatus && (
+        <View style={styles.listHeader}>
+          <Text style={[styles.listTitle, { color: colors.text }]}>Saved Vocabulary</Text>
+          <View style={styles.buttonGroup}>
+            <TouchableOpacity
+              style={[
+                styles.clearAllButton,
+                { borderColor: colors.error, backgroundColor: theme === 'dark' ? 'transparent' : '#fee2e2' },
+                (isDeletingAll || isLoadingList) && styles.disabledButton,
+              ]}
+              onPress={() => {
+                console.log('🗑️ Delete button pressed!');
+                confirmDeleteAll();
+              }}
+              disabled={isDeletingAll || isLoadingList}
+              activeOpacity={0.6}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {isDeletingAll ? (
+                <ActivityIndicator color={colors.error} size="small" />
+              ) : (
+                <Text style={[styles.clearAllButtonIcon, { color: colors.error }]}>🗑️</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.refreshButton, { borderColor: colors.border }]}
+              onPress={loadManagementList}
+              disabled={isLoadingList}
+            >
+              <Text style={[styles.refreshText, { color: colors.text }]}>
+                {isLoadingList ? 'Refreshing…' : 'Refresh'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {isLoadingList ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.text }]}>Loading vocabulary...</Text>
+          </View>
+        ) : managementList.length === 0 ? (
+          <View style={styles.emptyStateContainer}>
+            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>No vocabulary yet.</Text>
+          </View>
+        ) : (
+          managementList.map((entry) => (
+            <View key={entry.id} style={[styles.vocabItem, { borderColor: colors.border, backgroundColor: theme === 'dark' ? colors.surface : '#fff' }]}>
+              <View style={styles.vocabInfo}>
+                <Text style={[styles.vocabName, { color: colors.text }]}>{entry.name}</Text>
+                <Text style={[styles.vocabMeaning, { color: colors.textSecondary }]}>{entry.meaning}</Text>
+                <Text style={[styles.vocabMeta, { color: colors.textMuted }]}>
+                  {formatMonthLabel(entry.month)} {entry.year} • Sort {entry.sortType}
+                </Text>
+              </View>
+              <View style={styles.vocabActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, { borderColor: colors.border }]}
+                  onPress={() => handleEditEntry(entry)}
+                >
+                  <Text style={[styles.editAction, { color: colors.primary }]}>Edit</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.actionButton, { borderColor: colors.border }]}
+                  onPress={() => confirmDeleteEntry(entry)}
+                  disabled={deletingId === entry.id}
+                >
+                  {deletingId === entry.id ? (
+                    <ActivityIndicator color={colors.error} />
+                  ) : (
+                    <Text style={[styles.deleteAction, { color: colors.error }]}>Delete</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        )}
+
+        {listStatus && (
           <Text
             style={[
               styles.feedback,
-              practiceStatus.type === 'error'
-                ? { color: colors.error }
-                : { color: colors.success },
+              listStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
             ]}
           >
-            {practiceStatus.message}
+            {listStatus.message}
           </Text>
         )}
-      </View>
 
-      {isLoadingCards ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.text }]}>Loading flashcards...</Text>
-        </View>
-      ) : allFlashcards.length > 0 ? (
-        <View style={styles.practiceArea}>
-          <View style={styles.flashcardGrid}>
-            {currentPageFlashcards.map((card, idx) => (
-              <View
-                key={card._id || `${card.name}-${card.year}-${idx}`}
-                style={[
-                  styles.flashcardWrapper,
-                  theme === 'dark' && {
-                    padding: 10,
-                    borderRadius: 12,
-                  },
-                ]}
-              >
-                <Flashcard card={card} theme={colors} themeMode={theme} />
-              </View>
-            ))}
-          </View>
-          <View style={{ padding: 20, paddingTop: 0 }}>
-            <Text style={[styles.meta, { color: colors.textMuted }]}>
-              Showing {currentPageFlashcards.length} of {allFlashcards.length} cards
-              {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
+        {managementMeta && managementMeta.totalPages > 1 && (
+          <View style={styles.paginationRow}>
+            <TouchableOpacity
+              style={[
+                styles.paginationButton,
+                { borderColor: colors.border },
+                managementFilters.page === 1 && styles.disabledButton,
+              ]}
+              onPress={() => handleManagementPageChange('prev')}
+              disabled={managementFilters.page === 1}
+            >
+              <Text style={[styles.paginationText, { color: colors.text }]}>Prev</Text>
+            </TouchableOpacity>
+            <Text style={[styles.paginationMeta, { color: colors.text }]}>
+              Page {managementMeta.currentPage} of {managementMeta.totalPages}
             </Text>
-            {totalPages > 1 && (
-              <View style={styles.practiceNav}>
-                <TouchableOpacity
-                  style={[
-                    styles.practiceNavButton,
-                    styles.practiceNavPrev,
-                    (currentCardIndex === 0 || isLoadingCards) && styles.disabledButton,
-                  ]}
-                  onPress={handlePrevPage}
-                  disabled={currentCardIndex === 0 || isLoadingCards}
-                >
-                  <Text style={styles.practiceNavText}>Previous</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.practiceNavButton,
-                    styles.practiceNavNext,
-                    (currentCardIndex >= totalPages - 1 || isLoadingCards) &&
-                      styles.disabledButton,
-                  ]}
-                  onPress={handleNextPage}
-                  disabled={currentCardIndex >= totalPages - 1 || isLoadingCards}
-                >
-                  <Text style={styles.practiceNavText}>Next</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            <TouchableOpacity
+              style={[
+                styles.paginationButton,
+                { borderColor: colors.border },
+                managementMeta.currentPage >= managementMeta.totalPages &&
+                styles.disabledButton,
+              ]}
+              onPress={() => handleManagementPageChange('next')}
+              disabled={managementMeta.currentPage >= managementMeta.totalPages}
+            >
+              <Text style={[styles.paginationText, { color: colors.text }]}>Next</Text>
+            </TouchableOpacity>
           </View>
-        </View>
-      ) : (
-        <View style={styles.emptyStateContainer}>
-          <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-            No flashcards available. Adjust filters or load data.
-          </Text>
-        </View>
-      )}
+        )}
       </View>
     );
-    
+
     // Wrap with gradient border in dark mode
     if (theme === 'dark') {
       return (
@@ -1116,7 +916,219 @@ export default function App() {
         </GradientBorder>
       );
     }
-    
+
+    return <View style={[styles.card, { backgroundColor: colors.card }]}>{cardContent}</View>;
+  };
+
+  const renderPracticeSection = () => {
+    const cardContent = (
+      <View style={[{ backgroundColor: colors.card, borderRadius: 12, padding: 0 }]}>
+        <View style={{ padding: 20, paddingBottom: 0 }}>
+          {renderBackButton()}
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>Practice Flashcards</Text>
+          <TouchableOpacity
+            style={[styles.filterToggle, { backgroundColor: theme === 'dark' ? colors.surface : '#e0f2fe' }]}
+            onPress={() => setShowPracticeFilters((prev) => !prev)}
+          >
+            <Text style={[styles.filterToggleText, { color: theme === 'dark' ? colors.text : '#0369a1' }]}>
+              {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
+            </Text>
+          </TouchableOpacity>
+
+          {showPracticeFilters && (
+            <View style={styles.fullBleed}>
+              <View
+                style={[
+                  styles.practiceFilters,
+                  {
+                    backgroundColor: colors.filterBg,
+                    borderColor: colors.border,
+                    borderRadius: theme === 'dark' ? 16 : 12,
+                  },
+                ]}
+              >
+                <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
+                <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                  <Picker
+                    selectedValue={filters.sortType}
+                    onValueChange={(value) => handleFilterChange('sortType', value)}
+                    style={{ color: colors.text }}
+                  >
+                    <Picker.Item label="All Letters" value="" color={theme === 'dark' ? colors.text : undefined} />
+                    {SORT_OPTIONS.map((option) => (
+                      <Picker.Item
+                        key={`filter-sort-${option}`}
+                        label={option}
+                        value={option}
+                        color={theme === 'dark' ? colors.text : undefined}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+
+                <View style={styles.row}>
+                  <View style={styles.half}>
+                    <Text style={[styles.label, { color: colors.text }]}>Month</Text>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                      <Picker
+                        selectedValue={filters.month}
+                        onValueChange={(value) => handleFilterChange('month', value)}
+                        style={{ color: colors.text }}
+                      >
+                        <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
+                        {MONTHS.map((month) => (
+                          <Picker.Item
+                            key={`filter-month-${month.value}`}
+                            label={month.label}
+                            value={month.value}
+                            color={theme === 'dark' ? colors.text : undefined}
+                          />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+                  <View style={styles.half}>
+                    <Text style={[styles.label, { color: colors.text }]}>Year</Text>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                      <Picker
+                        selectedValue={filters.year}
+                        onValueChange={(value) => handleFilterChange('year', value)}
+                        style={{ color: colors.text }}
+                      >
+                        <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
+                        {YEARS.map((year) => (
+                          <Picker.Item key={`filter-year-${year}`} label={year} value={year} color={theme === 'dark' ? colors.text : undefined} />
+                        ))}
+                      </Picker>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            </View>
+          )}
+
+          <Text style={[styles.label, { color: colors.text }]}>Range (cards per session)</Text>
+          <View style={styles.rangeRow}>
+            {[5, 10, 15].map((value) => (
+              <TouchableOpacity
+                key={`range-${value}`}
+                style={[
+                  styles.rangeButton,
+                  filters.limit === String(value) && styles.rangeButtonActive,
+                  isLoadingCards && styles.disabledButton,
+                ]}
+                onPress={() => handleQuickRange(value)}
+                disabled={isLoadingCards}
+              >
+                {isLoadingCards && filters.limit === String(value) ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text
+                    style={[
+                      styles.rangeButtonText,
+                      filters.limit === String(value) && styles.rangeButtonTextActive,
+                    ]}
+                  >
+                    {value} cards
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {practiceStatus && (
+            <Text
+              style={[
+                styles.feedback,
+                practiceStatus.type === 'error'
+                  ? { color: colors.error }
+                  : { color: colors.success },
+              ]}
+            >
+              {practiceStatus.message}
+            </Text>
+          )}
+        </View>
+
+        {isLoadingCards ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.text }]}>Loading flashcards...</Text>
+          </View>
+        ) : allFlashcards.length > 0 ? (
+          <View style={styles.practiceArea}>
+            <View style={styles.flashcardGrid}>
+              {currentPageFlashcards.map((card, idx) => (
+                <View
+                  key={card.id || `${card.name}-${card.year}-${idx}`}
+                  style={[
+                    styles.flashcardWrapper,
+                    theme === 'dark' && {
+                      padding: 10,
+                      borderRadius: 12,
+                    },
+                  ]}
+                >
+                  <Flashcard card={card} theme={colors} themeMode={theme} />
+                </View>
+              ))}
+            </View>
+            <View style={{ padding: 20, paddingTop: 0 }}>
+              <Text style={[styles.meta, { color: colors.textMuted }]}>
+                Showing {currentPageFlashcards.length} of {allFlashcards.length} cards
+                {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
+              </Text>
+              {totalPages > 1 && (
+                <View style={styles.practiceNav}>
+                  <TouchableOpacity
+                    style={[
+                      styles.practiceNavButton,
+                      styles.practiceNavPrev,
+                      (currentCardIndex === 0 || isLoadingCards) && styles.disabledButton,
+                    ]}
+                    onPress={handlePrevPage}
+                    disabled={currentCardIndex === 0 || isLoadingCards}
+                  >
+                    <Text style={styles.practiceNavText}>Previous</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.practiceNavButton,
+                      styles.practiceNavNext,
+                      (currentCardIndex >= totalPages - 1 || isLoadingCards) &&
+                      styles.disabledButton,
+                    ]}
+                    onPress={handleNextPage}
+                    disabled={currentCardIndex >= totalPages - 1 || isLoadingCards}
+                  >
+                    <Text style={styles.practiceNavText}>Next</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </View>
+        ) : (
+          <View style={styles.emptyStateContainer}>
+            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
+              No flashcards available. Adjust filters or load data.
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+
+    // Wrap with gradient border in dark mode
+    if (theme === 'dark') {
+      return (
+        <GradientBorder
+          colors={[colors.gradientStart, colors.gradientMiddle, colors.gradientEnd]}
+          borderRadius={12}
+        >
+          {cardContent}
+        </GradientBorder>
+      );
+    }
+
     return <View style={[styles.card, { backgroundColor: colors.card, borderRadius: 12 }]}>{cardContent}</View>;
   };
 

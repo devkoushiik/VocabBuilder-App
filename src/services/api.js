@@ -8,13 +8,13 @@ if (__DEV__) {
 const handleResponse = async (response) => {
   // Get response as text first (React Native compatible)
   const text = await response.text();
-  
+
   // Check for HTML responses (Vercel deployment protection)
   if (text.trim().startsWith('<!') || text.includes('<html') || text.includes('Authentication Required') || text.includes('Vercel Authentication')) {
     console.error('Received HTML response - Vercel deployment protection is enabled:', text.substring(0, 300));
     throw new Error('API is protected. Please disable Vercel Deployment Protection in your Vercel project settings. Check VERCEL_PROTECTION_FIX.md for instructions.');
   }
-  
+
   // Parse JSON
   let data;
   try {
@@ -23,17 +23,17 @@ const handleResponse = async (response) => {
     console.error('JSON parse error. Response text:', text.substring(0, 200));
     throw new Error(`Invalid JSON response from server. Status: ${response.status}`);
   }
-  
+
   // Check if response is not OK
   if (!response.ok) {
     const message = data?.message || `Request failed with status ${response.status}`;
     const details = data?.details || [];
-    const errorMsg = details.length > 0 
+    const errorMsg = details.length > 0
       ? `${message}: ${details.join(', ')}`
       : message;
     throw new Error(errorMsg);
   }
-  
+
   return data;
 };
 
@@ -55,7 +55,7 @@ export const createVocabulary = async (payload) => {
     if (__DEV__) {
       console.log('Creating vocabulary:', payload);
     }
-    
+
     const response = await fetch(`${API_URL}/api/v1/vocabulary`, {
       method: 'POST',
       headers: {
@@ -108,7 +108,7 @@ export const deleteVocabulary = async (id) => {
     if (response.status === 204) {
       return;
     }
-    
+
     // Use handleResponse for error cases
     return handleResponse(response);
   } catch (error) {
@@ -122,27 +122,25 @@ export const deleteVocabulary = async (id) => {
 
 export const deleteAllVocabulary = async () => {
   try {
-    const response = await fetch(`${API_URL}/api/v1/vocabulary/delete-all-vocabulary`, {
-      method: 'DELETE',
+    if (__DEV__) {
+      console.log('Calling clear-all endpoint to delete all vocabulary');
+    }
+
+    const response = await fetch(`${API_URL}/api/v1/vocabulary/clear-all`, {
+      method: 'POST',
       headers: {
         'Accept': 'application/json',
+        'Content-Type': 'application/json',
       },
     });
 
-    // Handle 204 No Content response (common for DELETE operations)
-    if (response.status === 204 || response.status === 200) {
-      const text = await response.text();
-      if (!text || text.trim() === '') {
-        return { deletedCount: 0, message: 'All vocabulary deleted successfully' };
-      }
-      try {
-        return JSON.parse(text);
-      } catch (e) {
-        return { deletedCount: 0, message: 'All vocabulary deleted successfully' };
-      }
+    const data = await handleResponse(response);
+
+    if (__DEV__) {
+      console.log('Clear-all response:', data);
     }
 
-    return handleResponse(response);
+    return data;
   } catch (error) {
     console.error('Delete all vocabulary error:', error);
     if (error.message) {
@@ -165,7 +163,7 @@ export const fetchVocabulary = async (params = {}) => {
   } else {
     cleanedParams.limit = 5; // Default if not provided
   }
-  
+
   // Convert month and year to numbers if provided (only if they're valid)
   if (cleanedParams.month !== undefined && cleanedParams.month !== null && cleanedParams.month !== '') {
     const monthNum = Number(cleanedParams.month);
@@ -177,7 +175,7 @@ export const fetchVocabulary = async (params = {}) => {
   } else {
     delete cleanedParams.month; // Remove empty month
   }
-  
+
   if (cleanedParams.year !== undefined && cleanedParams.year !== null && cleanedParams.year !== '') {
     const yearNum = Number(cleanedParams.year);
     if (!Number.isNaN(yearNum) && yearNum >= 1900 && yearNum <= 2100) {
@@ -199,28 +197,28 @@ export const fetchVocabulary = async (params = {}) => {
   } else {
     delete cleanedParams.page;
   }
-  
+
   const query = buildQuery(cleanedParams);
   const url = query
     ? `${API_URL}/api/v1/vocabulary?${query}`
     : `${API_URL}/api/v1/vocabulary`;
-  
+
   try {
     if (__DEV__) {
       console.log('Fetching from URL:', url);
     }
-    
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
       },
     });
-    
+
     if (__DEV__) {
       console.log('Response status:', response.status, response.statusText);
     }
-    
+
     return handleResponse(response);
   } catch (error) {
     console.error('Fetch error:', error);

@@ -801,7 +801,7 @@ export default function App() {
         <Text style={[styles.heroEyebrow, { color: colors.primaryLighter }]}>Welcome to</Text>
       </Animated.View>
       <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslateY }] }}>
-        <Text style={styles.heroTitle}>Vocab Coach</Text>
+        <Text style={styles.heroTitle}>Vocal Drill</Text>
       </Animated.View>
       <Animated.View style={{ opacity: subtitleOpacity, transform: [{ translateY: subtitleTranslateY }] }}>
         <Text style={[styles.heroSubtitle, { color: colors.primaryLighter }]}>
@@ -852,7 +852,7 @@ export default function App() {
     <View style={[styles.buyMeCoffeeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 20 }]}>Buy me a coffee</Text>
       <Text style={[styles.buyMeCoffeeThanks, { color: colors.textSecondary }]}>
-        Thank you for using Vocab Coach! If you'd like to support the development, you can buy me a coffee.
+        Thank you for using Vocal Drill! If you'd like to support the development, you can buy me a coffee.
       </Text>
       <View style={[styles.buyMeCoffeeField, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
         <Text style={[styles.buyMeCoffeeLabel, { color: colors.textMuted }]}>Account</Text>

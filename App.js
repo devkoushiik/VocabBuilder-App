@@ -920,7 +920,7 @@ export default function App() {
         <Text style={[styles.heroEyebrow, { color: colors.primaryLighter }]}>Welcome to</Text>
       </Animated.View>
       <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslateY }] }}>
-        <Text style={styles.heroTitle}>Vocal Drill</Text>
+        <Text style={styles.heroTitle}>Vocab Drill</Text>
       </Animated.View>
       <Animated.View style={{ opacity: subtitleOpacity, transform: [{ translateY: subtitleTranslateY }] }}>
         <Text style={[styles.heroSubtitle, { color: colors.primaryLighter }]}>
@@ -977,7 +977,7 @@ export default function App() {
       </View>
 
       <Text style={[styles.bmcDescription, { color: colors.textSecondary }]}>
-        Enjoying Vocal Drill? Your support helps me keep improving the app and adding new features!
+        Enjoying Vocab Drill? Your support helps me keep improving the app and adding new features!
       </Text>
 
       <View style={[styles.bmcPaymentCard, {

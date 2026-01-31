@@ -14,6 +14,7 @@ import {
 
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Flashcard from './src/components/Flashcard';
@@ -112,6 +113,7 @@ const defaultManagementFilters = {
   month: '',
   year: '',
   search: '',
+  sortOrder: 'asc', // 'asc' | 'desc'
 };
 
 export default function App() {
@@ -257,6 +259,7 @@ export default function App() {
         search: managementFilters.search,
         limit: MANAGEMENT_LIMIT,
         page: managementFilters.page,
+        sortOrder: managementFilters.sortOrder || 'asc',
       });
       setManagementList(response.data);
       setManagementMeta(response.meta);
@@ -312,6 +315,14 @@ export default function App() {
       loadDoneList();
     }
   }, [activeView, loadDoneList]);
+
+  // Auto-hide form status (e.g. "Vocabulary saved!") after 3 seconds
+  useEffect(() => {
+    if (formStatus?.type === 'success') {
+      const timer = setTimeout(() => setFormStatus(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [formStatus]);
 
   useEffect(() => {
     const trimmed = form.name.trim();
@@ -735,15 +746,17 @@ export default function App() {
   const renderVocabItem = useCallback(({ item }) => {
     const mLabel = MONTHS.find(m => String(m.value) === String(item.month))?.label || item.month;
     return (
-      <VocabItem
-        entry={item}
-        colors={colors}
-        theme={theme}
-        onEdit={handleEditEntry}
-        onDelete={confirmDeleteEntry}
-        deletingId={deletingId}
-        monthLabel={mLabel}
-      />
+      <View style={{ paddingHorizontal: 8 }}>
+        <VocabItem
+          entry={item}
+          colors={colors}
+          theme={theme}
+          onEdit={handleEditEntry}
+          onDelete={confirmDeleteEntry}
+          deletingId={deletingId}
+          monthLabel={mLabel}
+        />
+      </View>
     );
   }, [colors, theme, deletingId]);
 
@@ -872,7 +885,7 @@ export default function App() {
         alignSelf: 'flex-start',
         gap: 8,
         paddingVertical: 10,
-        paddingHorizontal: 16,
+        paddingHorizontal: 14,
         marginBottom: 16,
         borderRadius: 12,
         backgroundColor: colors.backButtonBg,
@@ -962,7 +975,8 @@ export default function App() {
                 flexDirection: 'row',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                padding: 16,
+                paddingVertical: 16,
+                paddingHorizontal: 8,
               }}
               onPress={() => setShowManagementFilters((prev) => !prev)}
               activeOpacity={0.7}
@@ -983,8 +997,8 @@ export default function App() {
             </TouchableOpacity>
 
             {showManagementFilters && (
-              <View style={{ padding: 16, paddingTop: 0 }}>
-                <View style={{ alignItems: 'flex-end', marginBottom: 12 }}>
+              <View style={{ padding: 10, paddingTop: 0 }}>
+                <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
                   <TouchableOpacity onPress={handleResetManagementFilters}>
                     <Text style={[styles.clearFilters, { color: colors.error }]}>Reset Filters</Text>
                   </TouchableOpacity>
@@ -1001,7 +1015,7 @@ export default function App() {
                 <View style={styles.row}>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Sort</Text>
-                    <View style={{ marginBottom: 12 }}>
+                    <View style={{ marginBottom: 8 }}>
                       <ModalPicker
                         selectedValue={managementFilters.sortType}
                         onValueChange={(value) => handleManagementFilterChange('sortType', value)}
@@ -1015,7 +1029,7 @@ export default function App() {
                   </View>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                    <View style={{ marginBottom: 12 }}>
+                    <View style={{ marginBottom: 8 }}>
                       <ModalPicker
                         selectedValue={managementFilters.month}
                         onValueChange={(value) => handleManagementFilterChange('month', value)}
@@ -1032,7 +1046,7 @@ export default function App() {
                 <View style={styles.row}>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                    <View style={{ marginBottom: 12 }}>
+                    <View style={{ marginBottom: 8 }}>
                       <ModalPicker
                         selectedValue={managementFilters.year}
                         onValueChange={(value) => handleManagementFilterChange('year', value)}
@@ -1061,19 +1075,42 @@ export default function App() {
   };
 
   const renderVocabListHeader = () => (
-    <View style={{ marginTop: 24, paddingHorizontal: 4 }}>
-      <View style={[styles.listHeader, { paddingHorizontal: 0 }]}>
-        <Text style={[styles.listTitle, { color: colors.text }]}>Saved Vocabulary</Text>
-        <View style={styles.buttonGroup}>
+    <View style={[styles.savedVocabSection, { backgroundColor: colors.filterBg, borderColor: colors.border }]}>
+      <View style={styles.savedVocabHeader}>
+        <View style={styles.savedVocabTitleRow}>
+          <MaterialIcons name="menu-book" size={22} color={colors.primary} style={{ marginRight: 8 }} />
+          <Text style={[styles.savedVocabTitle, { color: colors.text }]}>Saved Vocabulary</Text>
+        </View>
+        <View style={styles.savedVocabActions}>
+          <TouchableOpacity
+            style={[
+              styles.sortOrderButton,
+              { borderColor: theme === 'dark' ? colors.borderLight : colors.border, backgroundColor: managementFilters.sortOrder === 'asc' ? colors.primary : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : colors.backButtonBg) },
+            ]}
+            onPress={() => handleManagementFilterChange('sortOrder', 'asc')}
+            activeOpacity={0.6}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="arrow-upward" size={18} color={managementFilters.sortOrder === 'asc' ? '#fff' : colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.sortOrderButton,
+              { borderColor: theme === 'dark' ? colors.borderLight : colors.border, backgroundColor: managementFilters.sortOrder === 'desc' ? colors.primary : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : colors.backButtonBg) },
+            ]}
+            onPress={() => handleManagementFilterChange('sortOrder', 'desc')}
+            activeOpacity={0.6}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="arrow-downward" size={18} color={managementFilters.sortOrder === 'desc' ? '#fff' : colors.text} />
+          </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.clearAllButton,
               { borderColor: colors.clearAllButtonBorder, backgroundColor: colors.clearAllButtonBg },
               (isDeletingAll || isLoadingList || !managementMeta?.grandTotal) && styles.disabledButton,
             ]}
-            onPress={() => {
-              confirmDeleteAll();
-            }}
+            onPress={() => confirmDeleteAll()}
             disabled={isDeletingAll || isLoadingList || !managementMeta?.grandTotal}
             activeOpacity={0.6}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1081,22 +1118,24 @@ export default function App() {
             {isDeletingAll ? (
               <ActivityIndicator color={colors.error} size="small" />
             ) : (
-              <Text style={[styles.clearAllButtonIcon, { color: colors.error }]}>🗑️</Text>
+              <MaterialIcons name="delete" size={20} color={colors.error} />
             )}
           </TouchableOpacity>
-
         </View>
       </View>
-      <Text style={{ fontSize: 13, color: colors.success, fontWeight: '600', marginTop: -4, marginBottom: 12 }}>
-        Total Vocabulary: {managementMeta?.grandTotal || 0}
-      </Text>
+      <View style={[styles.savedVocabTotalBadge, { backgroundColor: theme === 'dark' ? 'rgba(0,255,0,0.12)' : 'rgba(22,163,74,0.1)', borderColor: theme === 'dark' ? 'rgba(0,255,0,0.25)' : 'rgba(22,163,74,0.25)' }]}>
+        <MaterialIcons name="library-books" size={16} color={colors.success} />
+        <Text style={[styles.savedVocabTotalText, { color: colors.success }]}>
+          {managementMeta?.grandTotal || 0} word{(managementMeta?.grandTotal || 0) !== 1 ? 's' : ''}
+        </Text>
+      </View>
     </View>
   );
 
   const renderPracticeSection = () => {
     const cardContent = (
       <View style={{ backgroundColor: colors.card, borderRadius: 12, padding: 0, overflow: 'hidden' }}>
-        <View style={{ paddingTop: 20, paddingBottom: 0, paddingHorizontal: 20, width: '100%' }}>
+        <View style={{ paddingTop: 20, paddingBottom: 0, paddingHorizontal: 8, width: '100%' }}>
           <View style={{ marginBottom: 12 }}>
             {renderBackButton()}
             <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
@@ -1227,7 +1266,7 @@ export default function App() {
         </View>
 
         {isLoadingCards ? (
-          <View style={[styles.loadingContainer, { paddingHorizontal: 20 }]}>
+          <View style={[styles.loadingContainer, { paddingHorizontal: 8 }]}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[styles.loadingText, { color: colors.text }]}>Loading flashcards...</Text>
           </View>
@@ -1250,7 +1289,7 @@ export default function App() {
                 </View>
               ))}
             </View>
-            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, width: '100%' }}>
+            <View style={{ paddingHorizontal: 8, paddingTop: 16, paddingBottom: 8, width: '100%' }}>
               <Text style={[styles.meta, { color: colors.textMuted }]}>
                 Showing {currentPageFlashcards.length} of {allFlashcards.length} cards
                 {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
@@ -1285,7 +1324,7 @@ export default function App() {
             </View>
           </View>
         ) : (
-          <View style={[styles.emptyStateContainer, { paddingHorizontal: 20 }]}>
+          <View style={[styles.emptyStateContainer, { paddingHorizontal: 8 }]}>
             <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
               No flashcards available. Add vocabulary to get started.
             </Text>
@@ -1341,7 +1380,7 @@ export default function App() {
                 justifyContent: 'center',
                 gap: 8,
                 paddingVertical: 12,
-                paddingHorizontal: 16,
+                paddingHorizontal: 8,
                 borderRadius: 12,
                 backgroundColor: colors.doneListReturnAllBg,
                 borderWidth: 1,
@@ -1363,7 +1402,7 @@ export default function App() {
                 justifyContent: 'center',
                 gap: 8,
                 paddingVertical: 12,
-                paddingHorizontal: 16,
+                paddingHorizontal: 8,
                 borderRadius: 12,
                 backgroundColor: colors.doneListClearAllBg,
                 borderWidth: 1,
@@ -1389,7 +1428,7 @@ export default function App() {
           <View
             style={{
               paddingVertical: 48,
-              paddingHorizontal: 24,
+              paddingHorizontal: 8,
               alignItems: 'center',
               backgroundColor: theme === 'dark' ? colors.background : '#f8fafc',
               borderRadius: 16,
@@ -1432,7 +1471,7 @@ export default function App() {
                   </Text>
                   <View
                     style={{
-                      paddingHorizontal: 10,
+                      paddingHorizontal: 8,
                       paddingVertical: 4,
                       borderRadius: 8,
                       backgroundColor: theme === 'dark' ? colors.border : '#f1f5f9',
@@ -1470,7 +1509,7 @@ export default function App() {
                     style={{
                       flex: 1,
                       paddingVertical: 10,
-                      paddingHorizontal: 16,
+                      paddingHorizontal: 8,
                       borderRadius: 10,
                       backgroundColor: colors.primary,
                       alignItems: 'center',
@@ -1483,7 +1522,7 @@ export default function App() {
                   <TouchableOpacity
                     style={{
                       paddingVertical: 10,
-                      paddingHorizontal: 14,
+                      paddingHorizontal: 8,
                       borderRadius: 10,
                       backgroundColor: 'transparent',
                       borderWidth: 1,
@@ -1609,15 +1648,7 @@ export default function App() {
     </View>
   );
 
-  const commonHeader = (
-    <View style={[styles.headerContainer, { borderBottomColor: colors.border }]}>
-      <Text style={[styles.heading, { color: colors.text }]}>Vocabulary Builder</Text>
-      <View style={[styles.quoteContainer, { backgroundColor: colors.quoteBg, borderLeftColor: colors.primary }]}>
-        <Text style={styles.quoteIcon}>💬</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary }]}>{randomQuote}</Text>
-      </View>
-    </View>
-  );
+  const commonHeader = null;
 
   if (activeView === 'home') {
     return (
@@ -1668,7 +1699,7 @@ export default function App() {
           windowSize={5}
           removeClippedSubviews={true}
           ListHeaderComponent={
-            <View>
+            <View style={{ paddingHorizontal: 8 }}>
               {commonHeader}
               {renderAddSection()}
               {renderVocabListHeader()}
@@ -1709,7 +1740,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   container: {
-    padding: 20,
+    paddingVertical: 20,
+    paddingHorizontal: 8,
     gap: 24,
   },
   headerContainer: {
@@ -1820,7 +1852,7 @@ const styles = StyleSheet.create({
     borderColor: '#94a3b8',
     borderRadius: 999,
     paddingVertical: 4,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
   },
   chipText: {
     color: '#475569',
@@ -1887,7 +1919,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#e0f2fe',
     borderRadius: 12,
     paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     marginBottom: 12,
   },
   filterToggleText: {
@@ -1900,7 +1932,7 @@ const styles = StyleSheet.create({
     borderColor: '#cbd5f5',
     borderRadius: 12,
     padding: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: 8,
     marginBottom: 16,
     backgroundColor: '#eef2ff',
     width: '100%',
@@ -1955,7 +1987,7 @@ const styles = StyleSheet.create({
   filterGroup: {
     marginTop: 24,
     padding: 24,
-    paddingHorizontal: 20,
+    paddingHorizontal: 8,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     borderRadius: 12,
@@ -1978,7 +2010,7 @@ const styles = StyleSheet.create({
   heroFull: {
     flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 8,
   },
   heroCard: {
     backgroundColor: '#1e40af',
@@ -2016,7 +2048,7 @@ const styles = StyleSheet.create({
   primaryCta: {
     backgroundColor: '#3b82f6',
     paddingVertical: 14,
-    paddingHorizontal: 24,
+    paddingHorizontal: 8,
     borderRadius: 999,
     shadowColor: '#3b82f6',
     shadowOpacity: 0.3,
@@ -2034,7 +2066,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
     paddingVertical: 14,
-    paddingHorizontal: 24,
+    paddingHorizontal: 8,
     borderRadius: 999,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
@@ -2047,7 +2079,7 @@ const styles = StyleSheet.create({
   buyMeCoffeeLink: {
     alignSelf: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 8,
     marginBottom: 24,
     borderWidth: 1,
     borderRadius: 999,
@@ -2089,7 +2121,7 @@ const styles = StyleSheet.create({
   },
   copyButton: {
     paddingVertical: 10,
-    paddingHorizontal: 18,
+    paddingHorizontal: 8,
     borderRadius: 10,
     borderWidth: 1,
   },
@@ -2129,6 +2161,47 @@ const styles = StyleSheet.create({
     color: '#dc2626',
     fontWeight: '600',
   },
+  savedVocabSection: {
+    marginTop: 12,
+    marginBottom: 12,
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  savedVocabHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  savedVocabTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  savedVocabTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  savedVocabActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  savedVocabTotalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  savedVocabTotalText: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
   listHeader: {
     marginTop: 24,
     marginBottom: 12,
@@ -2149,7 +2222,7 @@ const styles = StyleSheet.create({
   },
   refreshButton: {
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#94a3b8',
@@ -2162,18 +2235,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 14,
   },
+  sortOrderButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 32,
+    minWidth: 36,
+  },
   clearAllButton: {
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: 999,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 32,
     minWidth: 32,
-  },
-  clearAllButtonIcon: {
-    fontSize: 20,
   },
   emptyState: {
     color: '#94a3b8',
@@ -2209,7 +2289,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
     borderRadius: 999,
     borderWidth: 1,
     borderColor: '#cbd5f5',
@@ -2233,7 +2313,7 @@ const styles = StyleSheet.create({
     borderColor: '#94a3b8',
     borderRadius: 999,
     paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
   },
   paginationText: {
     color: '#1f2937',
@@ -2279,7 +2359,7 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.3)',

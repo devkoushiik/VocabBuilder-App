@@ -44,7 +44,7 @@ const ModalPicker = ({
             borderColor: borderColor,
             borderRadius: 12,
             paddingVertical: 12,
-            paddingHorizontal: 16,
+            paddingHorizontal: 8,
             backgroundColor: theme === 'dark' ? contentBg : undefined,
             minHeight: 48,
             justifyContent: 'center',
@@ -96,7 +96,7 @@ const ModalPicker = ({
                   onPress={() => handleSelect(item.value)}
                   style={{
                     paddingVertical: 14,
-                    paddingHorizontal: 20,
+                    paddingHorizontal: 8,
                     backgroundColor:
                       String(selectedValue) === String(item.value)
                         ? theme === 'dark'

@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
-import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Audio } from 'expo-av';
 
-const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone }) => {
+const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone, entranceDelay = 0 }) => {
   const [showBack, setShowBack] = useState(false);
   const [sound, setSound] = useState();
+  const flipAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     let soundObj;
@@ -28,6 +30,19 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone 
     };
   }, []);
 
+  useEffect(() => {
+    scaleAnim.setValue(0.92);
+    const timer = setTimeout(() => {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 100,
+        useNativeDriver: true,
+      }).start();
+    }, entranceDelay);
+    return () => clearTimeout(timer);
+  }, [card?.id, entranceDelay]);
+
   const handleToggle = async () => {
     try {
       if (sound) {
@@ -36,7 +51,16 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone 
     } catch (error) {
       // Ignore audio errors during interaction
     }
-    setShowBack((prev) => !prev);
+    setShowBack((prev) => {
+      const next = !prev;
+      Animated.spring(flipAnim, {
+        toValue: next ? 1 : 0,
+        friction: 8,
+        tension: 65,
+        useNativeDriver: true,
+      }).start();
+      return next;
+    });
   };
 
   // Use theme colors if provided
@@ -86,33 +110,95 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone 
     onMarkDone?.(card);
   };
 
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.97,
+      friction: 6,
+      useNativeDriver: true,
+    }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 6,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const frontInterpolate = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+  const backInterpolate = flipAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['180deg', '360deg'],
+  });
+
   return (
-    <TouchableOpacity style={cardStyles.card} onPress={handleToggle} activeOpacity={0.9}>
-      {showMarkDone && onMarkDone && (
-        <TouchableOpacity
-          style={{
-            position: 'absolute',
-            top: 14,
-            right: 14,
-            zIndex: 10,
-            width: 28,
-            height: 28,
-            borderRadius: 6,
-            backgroundColor: colors.success || '#16a34a',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-          onPress={handleMarkDone}
-          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-        >
-          <Text style={{ fontSize: 14, color: '#fff', fontWeight: '700' }}>✓</Text>
-        </TouchableOpacity>
-      )}
-      <View>
-        <Text style={cardStyles.label}>{showBack ? 'Vocabulary' : 'Meaning'}</Text>
-        <Text style={cardStyles.value}>{showBack ? card.name : card.meaning}</Text>
-      </View>
-      <Text style={cardStyles.hint}>Tap to flip</Text>
+    <TouchableOpacity
+      onPress={handleToggle}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      activeOpacity={1}
+      style={{ width: '100%' }}
+    >
+      <Animated.View
+        style={[
+          cardStyles.card,
+          {
+            transform: [
+              { perspective: 1000 },
+              { scale: scaleAnim },
+            ],
+          },
+        ]}
+      >
+        {showMarkDone && onMarkDone && (
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              top: 14,
+              right: 14,
+              zIndex: 10,
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              backgroundColor: colors.success || '#16a34a',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            onPress={handleMarkDone}
+            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+          >
+            <Text style={{ fontSize: 14, color: '#fff', fontWeight: '700' }}>✓</Text>
+          </TouchableOpacity>
+        )}
+        <View style={{ flex: 1, position: 'relative' }}>
+          <Animated.View
+            style={{
+              position: 'absolute',
+              width: '100%',
+              backfaceVisibility: 'hidden',
+              transform: [{ rotateY: frontInterpolate }],
+            }}
+          >
+            <Text style={cardStyles.label}>Meaning</Text>
+            <Text style={cardStyles.value}>{card.meaning}</Text>
+          </Animated.View>
+          <Animated.View
+            style={{
+              position: 'absolute',
+              width: '100%',
+              backfaceVisibility: 'hidden',
+              transform: [{ rotateY: backInterpolate }],
+            }}
+          >
+            <Text style={cardStyles.label}>Vocabulary</Text>
+            <Text style={cardStyles.value}>{card.name}</Text>
+          </Animated.View>
+        </View>
+        <Text style={cardStyles.hint}>Tap to flip</Text>
+      </Animated.View>
     </TouchableOpacity>
   );
 };

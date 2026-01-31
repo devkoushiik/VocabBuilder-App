@@ -13,6 +13,7 @@ import {
   View,
 
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
@@ -145,12 +146,62 @@ export default function App() {
   const [doneList, setDoneList] = useState([]);
   const [isLoadingDoneList, setIsLoadingDoneList] = useState(false);
   const [deletingDoneId, setDeletingDoneId] = useState(null);
+  const [copiedNumber, setCopiedNumber] = useState(false);
+  const [copiedEmail, setCopiedEmail] = useState(false);
 
   const isEditing = Boolean(editingId);
 
   // Animation for filter arrow
   const arrowAnim = useRef(new Animated.Value(0)).current;
 
+  // Home page animations
+  const heroOpacity = useRef(new Animated.Value(0)).current;
+  const heroScale = useRef(new Animated.Value(0.92)).current;
+  const heroTranslateY = useRef(new Animated.Value(30)).current;
+  const eyebrowOpacity = useRef(new Animated.Value(0)).current;
+  const eyebrowTranslateY = useRef(new Animated.Value(20)).current;
+  const titleOpacity = useRef(new Animated.Value(0)).current;
+  const titleTranslateY = useRef(new Animated.Value(24)).current;
+  const subtitleOpacity = useRef(new Animated.Value(0)).current;
+  const subtitleTranslateY = useRef(new Animated.Value(20)).current;
+  const buttonsOpacity = useRef(new Animated.Value(0)).current;
+  const buttonsTranslateY = useRef(new Animated.Value(24)).current;
+  const buyMeCoffeeOpacity = useRef(new Animated.Value(0)).current;
+  const buyMeCoffeeTranslateY = useRef(new Animated.Value(50)).current;
+
+  useEffect(() => {
+    if (activeView === 'home') {
+      heroOpacity.setValue(0);
+      heroScale.setValue(0.92);
+      heroTranslateY.setValue(30);
+      eyebrowOpacity.setValue(0);
+      eyebrowTranslateY.setValue(20);
+      titleOpacity.setValue(0);
+      titleTranslateY.setValue(24);
+      subtitleOpacity.setValue(0);
+      subtitleTranslateY.setValue(20);
+      buttonsOpacity.setValue(0);
+      buttonsTranslateY.setValue(24);
+      buyMeCoffeeOpacity.setValue(0);
+      buyMeCoffeeTranslateY.setValue(50);
+
+      Animated.parallel([
+        Animated.timing(heroOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.spring(heroScale, { toValue: 1, friction: 6, tension: 180, useNativeDriver: true }),
+        Animated.spring(heroTranslateY, { toValue: 0, friction: 6, tension: 180, useNativeDriver: true }),
+        Animated.timing(eyebrowOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.spring(eyebrowTranslateY, { toValue: 0, friction: 6, tension: 180, useNativeDriver: true }),
+        Animated.timing(titleOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.spring(titleTranslateY, { toValue: 0, friction: 6, tension: 180, useNativeDriver: true }),
+        Animated.timing(subtitleOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.spring(subtitleTranslateY, { toValue: 0, friction: 6, tension: 180, useNativeDriver: true }),
+        Animated.timing(buttonsOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.spring(buttonsTranslateY, { toValue: 0, friction: 6, tension: 180, useNativeDriver: true }),
+        Animated.timing(buyMeCoffeeOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+        Animated.spring(buyMeCoffeeTranslateY, { toValue: 0, friction: 6, tension: 150, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [activeView]);
 
   useEffect(() => {
     Animated.timing(arrowAnim, {
@@ -699,7 +750,17 @@ export default function App() {
   }, [colors, theme, deletingId]);
 
   const renderHome = () => (
-    <View style={[styles.heroCard, { backgroundColor: colors.heroBg, borderColor: colors.primaryLight }]}>
+    <Animated.View
+      style={[
+        styles.heroCard,
+        {
+          backgroundColor: colors.heroBg,
+          borderColor: colors.primaryLight,
+          opacity: heroOpacity,
+          transform: [{ scale: heroScale }, { translateY: heroTranslateY }],
+        },
+      ]}
+    >
       <TouchableOpacity
         style={[styles.themeToggleButton, { zIndex: 50, elevation: 50 }]}
         onPress={toggleTheme}
@@ -709,32 +770,99 @@ export default function App() {
         <Text style={styles.themeToggleIcon}>{theme === 'dark' ? '☀️' : '🌙'}</Text>
         <Text style={styles.themeToggleText}>{theme === 'dark' ? 'Light' : 'Dark'}</Text>
       </TouchableOpacity>
-      <Text style={[styles.heroEyebrow, { color: colors.primaryLighter }]}>Welcome to</Text>
-      <Text style={styles.heroTitle}>Vocab Coach</Text>
-      <Text style={[styles.heroSubtitle, { color: colors.primaryLighter }]}>
-        Build your personal vocabulary deck and practice with flashcards
-        anywhere, anytime.
-      </Text>
-      <View style={styles.heroButtons}>
+      <Animated.View style={{ opacity: eyebrowOpacity, transform: [{ translateY: eyebrowTranslateY }] }}>
+        <Text style={[styles.heroEyebrow, { color: colors.primaryLighter }]}>Welcome to</Text>
+      </Animated.View>
+      <Animated.View style={{ opacity: titleOpacity, transform: [{ translateY: titleTranslateY }] }}>
+        <Text style={styles.heroTitle}>Vocab Coach</Text>
+      </Animated.View>
+      <Animated.View style={{ opacity: subtitleOpacity, transform: [{ translateY: subtitleTranslateY }] }}>
+        <Text style={[styles.heroSubtitle, { color: colors.primaryLighter }]}>
+          Build your personal vocabulary deck and practice with flashcards
+          anywhere, anytime.
+        </Text>
+      </Animated.View>
+      <Animated.View style={[styles.heroButtons, { opacity: buttonsOpacity, transform: [{ translateY: buttonsTranslateY }] }]}>
         <TouchableOpacity
           style={[styles.primaryCta, { backgroundColor: colors.primaryLight }]}
           onPress={() => setActiveView('add')}
+          activeOpacity={0.85}
         >
           <Text style={styles.primaryCtaText}>Add Vocabulary</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.secondaryCta, { borderColor: '#fff', backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}
           onPress={() => setActiveView('practice')}
+          activeOpacity={0.85}
         >
           <Text style={styles.secondaryCtaText}>Practice Flashcards</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.secondaryCta, { borderColor: '#fff', backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}
           onPress={() => setActiveView('doneList')}
+          activeOpacity={0.85}
         >
           <Text style={styles.secondaryCtaText}>Done List</Text>
         </TouchableOpacity>
+      </Animated.View>
+    </Animated.View>
+  );
+
+  const NAGAD_NUMBER = '01796297945';
+  const GMAIL_EMAIL = 'dev.koushiik@gmail.com';
+  const handleCopyNumber = useCallback(async () => {
+    await Clipboard.setStringAsync(NAGAD_NUMBER);
+    setCopiedNumber(true);
+    setTimeout(() => setCopiedNumber(false), 2000);
+  }, []);
+  const handleCopyEmail = useCallback(async () => {
+    await Clipboard.setStringAsync(GMAIL_EMAIL);
+    setCopiedEmail(true);
+    setTimeout(() => setCopiedEmail(false), 2000);
+  }, []);
+
+  const renderBuyMeACoffeeSection = () => (
+    <View style={[styles.buyMeCoffeeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
+      <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 20 }]}>Buy me a coffee</Text>
+      <Text style={[styles.buyMeCoffeeThanks, { color: colors.textSecondary }]}>
+        Thank you for using Vocab Coach! If you'd like to support the development, you can buy me a coffee.
+      </Text>
+      <View style={[styles.buyMeCoffeeField, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+        <Text style={[styles.buyMeCoffeeLabel, { color: colors.textMuted }]}>Account</Text>
+        <Text style={[styles.buyMeCoffeeValue, { color: colors.text }]}>Nagad</Text>
       </View>
+      <View style={[styles.buyMeCoffeeField, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+        <Text style={[styles.buyMeCoffeeLabel, { color: colors.textMuted }]}>Number</Text>
+        <View style={styles.buyMeCoffeeRow}>
+          <Text style={[styles.buyMeCoffeeValue, { color: colors.text, flex: 1 }]}>{NAGAD_NUMBER}</Text>
+          <TouchableOpacity
+            style={[styles.copyButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            onPress={handleCopyNumber}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.copyButtonText}>{copiedNumber ? '✓ Copied!' : 'Copy'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={[styles.buyMeCoffeeField, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
+        <Text style={[styles.buyMeCoffeeLabel, { color: colors.textMuted }]}>Gmail</Text>
+        <View style={styles.buyMeCoffeeRow}>
+          <Text style={[styles.buyMeCoffeeValue, { color: colors.text, flex: 1, fontSize: 15 }]}>{GMAIL_EMAIL}</Text>
+          <TouchableOpacity
+            style={[styles.copyButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            onPress={handleCopyEmail}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.copyButtonText}>{copiedEmail ? '✓ Copied!' : 'Copy'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <Text style={[styles.buyMeCoffeeThanks, { color: colors.textSecondary, fontStyle: 'italic' }]}>
+        Share your insights and suggestions to help us build a better app—your voice matters!
+      </Text>
+      <Text style={[styles.buyMeCoffeeAppreciation, { color: colors.primary }]}>
+        🙏 Thank you for your generosity and support! It means a lot.
+      </Text>
     </View>
   );
 
@@ -1137,6 +1265,7 @@ export default function App() {
                     themeMode={theme}
                     showMarkDone
                     onMarkDone={handleMarkDone}
+                    entranceDelay={idx * 80}
                   />
                 </View>
               ))}
@@ -1514,7 +1643,30 @@ export default function App() {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.heroBg }]}>
         <StatusBar style={theme === 'dark' ? 'light' : 'light'} />
-        <View style={styles.heroFull}>{renderHome()}</View>
+        <View style={[styles.heroFull, { justifyContent: 'space-between' }]}>
+          <View style={{ flex: 1, justifyContent: 'center' }}>{renderHome()}</View>
+          <Animated.View style={{ opacity: buyMeCoffeeOpacity, transform: [{ translateY: buyMeCoffeeTranslateY }] }}>
+            <TouchableOpacity
+              style={[styles.buyMeCoffeeLink, { borderColor: colors.primaryLighter }]}
+              onPress={() => setActiveView('buyMeACoffee')}
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.buyMeCoffeeLinkText, { color: colors.primaryLighter }]}>☕ Buy me a coffee</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (activeView === 'buyMeACoffee') {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        <ScrollView contentContainerStyle={[styles.container, { backgroundColor: colors.background, flexGrow: 1 }]}>
+          {renderBackButton()}
+          {renderBuyMeACoffeeSection()}
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -1911,6 +2063,66 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 16,
     letterSpacing: 0.5,
+  },
+  buyMeCoffeeLink: {
+    alignSelf: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderRadius: 999,
+  },
+  buyMeCoffeeLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  buyMeCoffeeCard: {
+    padding: 24,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 16,
+  },
+  buyMeCoffeeThanks: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  buyMeCoffeeField: {
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+  },
+  buyMeCoffeeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  buyMeCoffeeValue: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  buyMeCoffeeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  copyButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  copyButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  buyMeCoffeeAppreciation: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 8,
+    lineHeight: 24,
   },
   backButton: {
     alignSelf: 'flex-start',

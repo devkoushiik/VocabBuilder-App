@@ -969,53 +969,70 @@ export default function App() {
 
   const renderBuyMeACoffeeSection = () => (
     <View style={[styles.buyMeCoffeeCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 20 }]}>Buy me a coffee</Text>
-      <Text style={[styles.buyMeCoffeeThanks, { color: colors.textSecondary }]}>
-        Thank you for using Vocal Drill! If you'd like to support the development, you can buy me a coffee.
-      </Text>
-      <View style={[styles.buyMeCoffeeField, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-        <Text style={[styles.buyMeCoffeeLabel, { color: colors.textMuted }]}>Account</Text>
-        <Text style={[styles.buyMeCoffeeValue, { color: colors.text }]}>Nagad</Text>
+      <View style={styles.bmcHeader}>
+        <View style={[styles.bmcIconWrapper, { backgroundColor: theme === 'dark' ? '#332914' : '#FFF9E6' }]}>
+          <MaterialIcons name="local-cafe" size={24} color="#D9A646" />
+        </View>
+        <Text style={[styles.bmcTitle, { color: colors.text }]}>Buy me a coffee</Text>
       </View>
-      <View style={[styles.buyMeCoffeeField, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-        <Text style={[styles.buyMeCoffeeLabel, { color: colors.textMuted }]}>Number</Text>
-        <View style={styles.buyMeCoffeeRow}>
-          <Text style={[styles.buyMeCoffeeValue, { color: colors.text, flex: 1 }]}>{NAGAD_NUMBER}</Text>
+
+      <Text style={[styles.bmcDescription, { color: colors.textSecondary }]}>
+        Enjoying Vocal Drill? Your support helps me keep improving the app and adding new features!
+      </Text>
+
+      <View style={[styles.bmcPaymentCard, {
+        backgroundColor: theme === 'dark' ? '#1e293b' : '#fff5f5',
+        borderColor: theme === 'dark' ? '#334155' : '#fed7d7'
+      }]}>
+        <View style={styles.bmcPaymentHeader}>
+          <View style={[styles.bmcMethodIcon, { backgroundColor: '#FF413615' }]}>
+            <MaterialIcons name="account-balance-wallet" size={18} color="#FF4136" />
+          </View>
+          <Text style={[styles.bmcMethodName, { color: colors.text }]}>Nagad (Personal)</Text>
+        </View>
+
+        <View style={styles.bmcNumberRow}>
+          <Text style={[styles.bmcNumberText, { color: colors.text }]}>{NAGAD_NUMBER}</Text>
           <TouchableOpacity
-            style={[styles.copyButton, { backgroundColor: 'transparent' }]}
+            style={[styles.bmcCopyButton, { backgroundColor: colors.background }]}
             onPress={handleCopyNumber}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <MaterialIcons
-              name={copiedNumber ? 'check' : 'content-copy'}
-              size={20}
-              color={colors.primary}
-            />
+            <Text style={[styles.bmcCopyText, { color: colors.primary }]}>
+              {copiedNumber ? 'Copied' : 'Copy'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
-      <View style={[styles.buyMeCoffeeField, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
-        <Text style={[styles.buyMeCoffeeLabel, { color: colors.textMuted }]}>Gmail</Text>
-        <View style={styles.buyMeCoffeeRow}>
-          <Text style={[styles.buyMeCoffeeValue, { color: colors.text, flex: 1 }]}>{GMAIL_EMAIL}</Text>
+
+      <View style={[styles.bmcPaymentCard, {
+        backgroundColor: theme === 'dark' ? '#1e293b' : '#f0f9ff',
+        borderColor: theme === 'dark' ? '#334155' : '#bae6fd',
+        marginTop: 12
+      }]}>
+        <View style={styles.bmcPaymentHeader}>
+          <View style={[styles.bmcMethodIcon, { backgroundColor: '#3b82f615' }]}>
+            <MaterialIcons name="email" size={18} color="#3b82f6" />
+          </View>
+          <Text style={[styles.bmcMethodName, { color: colors.text }]}>Contact & Feedback</Text>
+        </View>
+
+        <View style={styles.bmcNumberRow}>
+          <Text style={[styles.bmcNumberText, { color: colors.text, fontSize: 15 }]}>{GMAIL_EMAIL}</Text>
           <TouchableOpacity
-            style={[styles.copyButton, { backgroundColor: 'transparent' }]}
+            style={[styles.bmcCopyButton, { backgroundColor: colors.background }]}
             onPress={handleCopyEmail}
-            activeOpacity={0.8}
+            activeOpacity={0.7}
           >
-            <MaterialIcons
-              name={copiedEmail ? 'check' : 'content-copy'}
-              size={20}
-              color={colors.primary}
-            />
+            <Text style={[styles.bmcCopyText, { color: colors.primary }]}>
+              {copiedEmail ? 'Copied' : 'Copy'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
-      <Text style={[styles.buyMeCoffeeThanks, { color: colors.textSecondary, fontStyle: 'italic' }]}>
-        Share your insights and suggestions to help us build a better app—your voice matters!
-      </Text>
-      <Text style={[styles.buyMeCoffeeAppreciation, { color: colors.primary }]}>
-        🙏 Thank you for your generosity and support! It means a lot.
+
+      <Text style={[styles.bmcFooter, { color: colors.primary }]}>
+        🙏 Thank you for your support!
       </Text>
     </View>
   );
@@ -1124,16 +1141,16 @@ export default function App() {
         </TouchableOpacity>
 
         <View style={{ marginTop: 24, marginBottom: 12 }}>
-          <View             style={[
-              styles.filterGroup,
-              {
-                backgroundColor: colors.filterBg,
-                borderColor: colors.border,
-                borderRadius: 12,
-                padding: 0,
-                marginTop: 0,
-              },
-            ]}>
+          <View style={[
+            styles.filterGroup,
+            {
+              backgroundColor: colors.filterBg,
+              borderColor: colors.border,
+              borderRadius: 12,
+              padding: 0,
+              marginTop: 0,
+            },
+          ]}>
             <TouchableOpacity
               style={{
                 flexDirection: 'row',
@@ -1302,70 +1319,70 @@ export default function App() {
       <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
 
       {allFlashcards.length > 0 && (
-      <View style={{ marginTop: 12, marginBottom: 12 }}>
-        <View style={[styles.filterGroup, { backgroundColor: colors.filterBg, borderColor: colors.border, borderRadius: 12, padding: 0, marginTop: 0 }]}>
-          <TouchableOpacity
-            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8 }}
-            onPress={() => setShowPracticeFilters((prev) => !prev)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.listTitle, { fontSize: 16, color: colors.text, paddingRight: 0 }]}>
-              {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
-            </Text>
-            <Animated.Text style={{ color: colors.filterToggleText, fontSize: 16, fontWeight: 'bold', transform: [{ rotate: practiceArrowRotation }] }}>
-              ▼
-            </Animated.Text>
-          </TouchableOpacity>
+        <View style={{ marginTop: 12, marginBottom: 12 }}>
+          <View style={[styles.filterGroup, { backgroundColor: colors.filterBg, borderColor: colors.border, borderRadius: 12, padding: 0, marginTop: 0 }]}>
+            <TouchableOpacity
+              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8 }}
+              onPress={() => setShowPracticeFilters((prev) => !prev)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.listTitle, { fontSize: 16, color: colors.text, paddingRight: 0 }]}>
+                {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
+              </Text>
+              <Animated.Text style={{ color: colors.filterToggleText, fontSize: 16, fontWeight: 'bold', transform: [{ rotate: practiceArrowRotation }] }}>
+                ▼
+              </Animated.Text>
+            </TouchableOpacity>
 
-          {showPracticeFilters && (
-            <View style={{ padding: 10, paddingTop: 0 }}>
-              <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-              <View style={{ marginBottom: 8 }}>
-                <ModalPicker
-                  selectedValue={filters.sortType}
-                  onValueChange={(value) => handleFilterChange('sortType', value)}
-                  items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
-                  placeholder="A - Z (All)"
-                  colors={colors}
-                  theme={theme}
-                  containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                />
-              </View>
+            {showPracticeFilters && (
+              <View style={{ padding: 10, paddingTop: 0 }}>
+                <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
+                <View style={{ marginBottom: 8 }}>
+                  <ModalPicker
+                    selectedValue={filters.sortType}
+                    onValueChange={(value) => handleFilterChange('sortType', value)}
+                    items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
+                    placeholder="A - Z (All)"
+                    colors={colors}
+                    theme={theme}
+                    containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                  />
+                </View>
 
-              <View style={styles.row}>
-                <View style={styles.half}>
-                  <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                  <View style={{ marginBottom: 8 }}>
-                    <ModalPicker
-                      selectedValue={filters.month}
-                      onValueChange={(value) => handleFilterChange('month', value)}
-                      items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
-                      placeholder="Any"
-                      colors={colors}
-                      theme={theme}
-                      containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                    />
+                <View style={styles.row}>
+                  <View style={styles.half}>
+                    <Text style={[styles.label, { color: colors.text }]}>Month</Text>
+                    <View style={{ marginBottom: 8 }}>
+                      <ModalPicker
+                        selectedValue={filters.month}
+                        onValueChange={(value) => handleFilterChange('month', value)}
+                        items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
+                        placeholder="Any"
+                        colors={colors}
+                        theme={theme}
+                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                      />
+                    </View>
+                  </View>
+                  <View style={styles.half}>
+                    <Text style={[styles.label, { color: colors.text }]}>Year</Text>
+                    <View style={{ marginBottom: 8 }}>
+                      <ModalPicker
+                        selectedValue={filters.year}
+                        onValueChange={(value) => handleFilterChange('year', value)}
+                        items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
+                        placeholder="Any"
+                        colors={colors}
+                        theme={theme}
+                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                      />
+                    </View>
                   </View>
                 </View>
-                <View style={styles.half}>
-                  <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                  <View style={{ marginBottom: 8 }}>
-                    <ModalPicker
-                      selectedValue={filters.year}
-                      onValueChange={(value) => handleFilterChange('year', value)}
-                      items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
-                      placeholder="Any"
-                      colors={colors}
-                      theme={theme}
-                      containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                    />
-                  </View>
-                </View>
               </View>
-            </View>
-          )}
+            )}
+          </View>
         </View>
-      </View>
       )}
 
       <View style={{ marginTop: 12, marginBottom: 12, paddingVertical: 12, paddingHorizontal: 8 }}>
@@ -1562,107 +1579,107 @@ export default function App() {
                     alignItems: 'flex-start',
                   }}
                 >
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, width: '100%' }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, width: '100%' }}>
+                    <Text
+                      style={{
+                        fontSize: 20,
+                        fontWeight: '700',
+                        color: colors.text,
+                        flex: 1,
+                        letterSpacing: -0.3,
+                        textAlign: 'left',
+                      }}
+                      numberOfLines={2}
+                    >
+                      {entry.name}
+                    </Text>
+                    <View
+                      style={{
+                        paddingHorizontal: 8,
+                        paddingVertical: 4,
+                        borderRadius: 8,
+                        backgroundColor: theme === 'dark' ? colors.border : '#f1f5f9',
+                      }}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>
+                        {entry.sortType}
+                      </Text>
+                    </View>
+                  </View>
                   <Text
                     style={{
-                      fontSize: 20,
-                      fontWeight: '700',
-                      color: colors.text,
-                      flex: 1,
-                      letterSpacing: -0.3,
+                      fontSize: 16,
+                      color: colors.textSecondary,
+                      lineHeight: 22,
+                      marginBottom: 12,
                       textAlign: 'left',
                     }}
-                    numberOfLines={2}
+                    numberOfLines={3}
                   >
-                    {entry.name}
+                    {entry.meaning}
                   </Text>
-                  <View
+                  <Text
                     style={{
-                      paddingHorizontal: 8,
-                      paddingVertical: 4,
-                      borderRadius: 8,
-                      backgroundColor: theme === 'dark' ? colors.border : '#f1f5f9',
+                      fontSize: 13,
+                      color: colors.textMuted,
+                      marginBottom: 16,
+                      textAlign: 'left',
                     }}
                   >
-                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>
-                      {entry.sortType}
-                    </Text>
+                    {formatMonthLabel(entry.month)} {entry.year}
+                  </Text>
+                  <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        paddingVertical: 10,
+                        paddingHorizontal: 8,
+                        borderRadius: 10,
+                        backgroundColor: colors.primary,
+                        alignItems: 'center',
+                      }}
+                      onPress={() => handleReturnToPractice(entry.id)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Return to Practice</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        paddingVertical: 10,
+                        paddingHorizontal: 8,
+                        borderRadius: 10,
+                        backgroundColor: 'transparent',
+                        borderWidth: 1,
+                        borderColor: colors.doneListRemoveBorder,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                      onPress={() => {
+                        Alert.alert(
+                          'Remove',
+                          `Remove ${entry.name} from done list?`,
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Remove',
+                              style: 'destructive',
+                              onPress: () => handleDeleteFromDoneList(entry.id),
+                            },
+                          ]
+                        );
+                      }}
+                      disabled={deletingDoneId === entry.id}
+                      activeOpacity={0.8}
+                    >
+                      {deletingDoneId === entry.id ? (
+                        <ActivityIndicator size="small" color={colors.error} />
+                      ) : (
+                        <Text style={{ color: colors.doneListRemoveText, fontWeight: '600', fontSize: 14 }}>Remove</Text>
+                      )}
+                    </TouchableOpacity>
                   </View>
                 </View>
-                <Text
-                  style={{
-                    fontSize: 16,
-                    color: colors.textSecondary,
-                    lineHeight: 22,
-                    marginBottom: 12,
-                    textAlign: 'left',
-                  }}
-                  numberOfLines={3}
-                >
-                  {entry.meaning}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: 13,
-                    color: colors.textMuted,
-                    marginBottom: 16,
-                    textAlign: 'left',
-                  }}
-                >
-                  {formatMonthLabel(entry.month)} {entry.year}
-                </Text>
-                <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
-                  <TouchableOpacity
-                    style={{
-                      flex: 1,
-                      paddingVertical: 10,
-                      paddingHorizontal: 8,
-                      borderRadius: 10,
-                      backgroundColor: colors.primary,
-                      alignItems: 'center',
-                    }}
-                    onPress={() => handleReturnToPractice(entry.id)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Return to Practice</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={{
-                      paddingVertical: 10,
-                      paddingHorizontal: 8,
-                      borderRadius: 10,
-                      backgroundColor: 'transparent',
-                      borderWidth: 1,
-                      borderColor: colors.doneListRemoveBorder,
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                    }}
-                    onPress={() => {
-                      Alert.alert(
-                        'Remove',
-                        `Remove ${entry.name} from done list?`,
-                        [
-                          { text: 'Cancel', style: 'cancel' },
-                          {
-                            text: 'Remove',
-                            style: 'destructive',
-                            onPress: () => handleDeleteFromDoneList(entry.id),
-                          },
-                        ]
-                      );
-                    }}
-                    disabled={deletingDoneId === entry.id}
-                    activeOpacity={0.8}
-                  >
-                    {deletingDoneId === entry.id ? (
-                      <ActivityIndicator size="small" color={colors.error} />
-                    ) : (
-                      <Text style={{ color: colors.doneListRemoveText, fontWeight: '600', fontSize: 14 }}>Remove</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
+              );
 
               return (
                 <View key={entry.id} style={{ width: '100%', alignSelf: 'stretch' }}>
@@ -2311,44 +2328,85 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 16,
+    gap: 20,
   },
-  buyMeCoffeeThanks: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  buyMeCoffeeField: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 6,
-  },
-  buyMeCoffeeLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  buyMeCoffeeValue: {
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  buyMeCoffeeRow: {
-    flexDirection: 'row',
+  bmcHeader: {
     alignItems: 'center',
     gap: 12,
+    marginBottom: 8,
   },
-  copyButton: {
-    width: 44,
-    height: 44,
+  bmcIconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buyMeCoffeeAppreciation: {
+  bmcTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  bmcDescription: {
+    textAlign: 'center',
     fontSize: 16,
-    fontWeight: '600',
-    marginTop: 8,
     lineHeight: 24,
+    marginBottom: 8,
+  },
+  bmcPaymentCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+  },
+  bmcPaymentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  bmcMethodIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bmcMethodName: {
+    fontSize: 14,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  bmcNumberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(0,0,0,0.03)',
+    borderRadius: 12,
+    paddingLeft: 16,
+    paddingRight: 6,
+    paddingVertical: 6,
+  },
+  bmcNumberText: {
+    fontSize: 16,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    fontWeight: '600',
+    flex: 1,
+  },
+  bmcCopyButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+  },
+  bmcCopyText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  bmcFooter: {
+    textAlign: 'center',
+    marginTop: 8,
+    fontWeight: '600',
+    fontSize: 15,
   },
   backButton: {
     alignSelf: 'flex-start',

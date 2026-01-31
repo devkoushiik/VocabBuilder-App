@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Picker } from '@react-native-picker/picker';
 
 import Flashcard from './src/components/Flashcard';
+import ModalPicker from './src/components/ModalPicker';
 import GradientBorder from './src/components/GradientBorder';
 import VocabItem from './src/components/VocabItem';
 import { initDatabase } from './src/db/database';
@@ -57,6 +58,12 @@ const MONTHS = [
   { label: 'November', value: '11' },
   { label: 'December', value: '12' },
 ];
+
+// Months up to and including current month (for practice filter)
+const getAvailableMonthsForPractice = () => {
+  const currentMonthNum = new Date().getMonth() + 1; // 1-12
+  return MONTHS.filter((m) => Number(m.value) <= currentMonthNum);
+};
 const now = new Date();
 const CURRENT_MONTH = String(now.getMonth() + 1);
 const CURRENT_YEAR = String(now.getFullYear());
@@ -94,8 +101,8 @@ const defaultForm = {
 };
 
 const defaultFilters = {
-  month: CURRENT_MONTH,
-  year: CURRENT_YEAR,
+  month: '',
+  year: '',
   limit: '5',
   sortType: '',
 };
@@ -171,28 +178,6 @@ export default function App() {
         await initDatabase();
         console.log('Database ready!');
         setIsDbReady(true);
-
-        // Check if we need to seed data
-        try {
-          const { seedDatabase } = require('./src/db/seed');
-          const response = await getVocabulary({ limit: 1, page: 1 });
-
-          if (response.data.length === 0) {
-            console.log('Database is empty, seeding with sample data...');
-            await seedDatabase();
-            Alert.alert(
-              'Welcome! 🎉',
-              'I\'ve added 20 sample English-Bangla vocabulary words to get you started!',
-              [{ text: 'Great!' }]
-            );
-            // Reload list after seeding
-            if (activeView === 'add') {
-              loadManagementList();
-            }
-          }
-        } catch (seedError) {
-          console.log('Skipping seed:', seedError.message);
-        }
       } catch (error) {
         console.error('Failed to initialize database:', error);
         Alert.alert('Database Error', 'Failed to initialize local database. Please restart the app.');
@@ -239,18 +224,24 @@ export default function App() {
     }
   }, [activeView, loadManagementList, isDbReady]);
 
-  // Auto-load 5 cards by default when practice view opens
+  // Auto-load cards and fetch years when practice view opens
   useEffect(() => {
-    if (activeView === 'practice' && !hasAutoLoadedRef.current) {
-      hasAutoLoadedRef.current = true;
-      // Auto-load after a short delay to ensure view is ready
-      const timer = setTimeout(() => {
-        handleLoadFlashcards();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-    // Reset ref when leaving practice view
-    if (activeView !== 'practice') {
+    if (activeView === 'practice') {
+      if (!hasAutoLoadedRef.current) {
+        hasAutoLoadedRef.current = true;
+        // Load available years for practice filter
+        getAvailableYears().then((years) => {
+          const yearsSet = new Set(years.map(String));
+          yearsSet.add(CURRENT_YEAR);
+          setAvailableYears(Array.from(yearsSet).sort((a, b) => Number(b) - Number(a)));
+        });
+        // Auto-load after a short delay to ensure view is ready
+        const timer = setTimeout(() => {
+          handleLoadFlashcards();
+        }, 300);
+        return () => clearTimeout(timer);
+      }
+    } else {
       hasAutoLoadedRef.current = false;
     }
   }, [activeView]);
@@ -445,17 +436,24 @@ export default function App() {
     if (!card?.id) return;
     try {
       await moveToDoneList(card.id);
+      const prevLen = allFlashcards.length;
       setAllFlashcards((prev) => prev.filter((c) => c.id !== card.id));
+      const newLen = prevLen - 1;
       const limit = Number(filters.limit || 5);
-      const newLen = allFlashcards.length - 1;
-      const maxPage = Math.ceil(newLen / limit) - 1;
-      if (currentCardIndex > maxPage && maxPage >= 0) {
+      const maxPage = Math.max(0, Math.ceil(newLen / limit) - 1);
+      if (currentCardIndex > maxPage) {
         setCurrentCardIndex(maxPage);
       }
+      setPracticeStatus({
+        type: 'success',
+        message: newLen > 0
+          ? `Card moved to done list. ${newLen} card${newLen === 1 ? '' : 's'} remaining.`
+          : 'Card moved to done list. No cards left.',
+      });
     } catch (err) {
       setPracticeStatus({ type: 'error', message: err.message || 'Failed to move to done list.' });
     }
-  }, [filters.limit, allFlashcards.length, currentCardIndex]);
+  }, [filters.limit, currentCardIndex, allFlashcards.length]);
 
   const loadDoneList = useCallback(async () => {
     try {
@@ -565,7 +563,7 @@ export default function App() {
       year: String(entry.year || ''),
     });
     setEditingId(entry.id);
-    setFormStatus({ type: 'success', message: `Editing "${entry.name}"` });
+    setFormStatus({ type: 'success', message: `Editing ${entry.name}` });
   };
 
   const handleCancelEdit = () => {
@@ -597,7 +595,7 @@ export default function App() {
   const confirmDeleteEntry = (entry) => {
     Alert.alert(
       'Delete vocabulary',
-      `Delete "${entry.name}"? This cannot be undone.`,
+      `Delete ${entry.name}? This cannot be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -751,9 +749,9 @@ export default function App() {
         paddingHorizontal: 16,
         marginBottom: 16,
         borderRadius: 12,
-        backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+        backgroundColor: colors.backButtonBg,
         borderWidth: 1,
-        borderColor: theme === 'dark' ? 'rgba(255,255,255,0.12)' : '#e2e8f0',
+        borderColor: colors.backButtonBorder,
       }}
       onPress={() => setActiveView('home')}
       activeOpacity={0.7}
@@ -769,9 +767,9 @@ export default function App() {
         {renderBackButton()}
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Add Vocabulary</Text>
         {isEditing && (
-          <View style={[styles.editBanner, { backgroundColor: theme === 'dark' ? colors.surface : '#dbeafe' }]}>
-            <Text style={[styles.editBannerText, { color: theme === 'dark' ? colors.text : '#1d4ed8' }]}>
-              Editing "{form.name || 'Vocabulary'}"
+          <View style={[styles.editBanner, { backgroundColor: colors.quoteBg }]}>
+            <Text style={[styles.editBannerText, { color: colors.primary }]}>
+              Editing {form.name || 'Vocabulary'}
             </Text>
             <TouchableOpacity onPress={handleCancelEdit}>
               <Text style={[styles.editBannerAction, { color: colors.error }]}>Cancel</Text>
@@ -809,7 +807,7 @@ export default function App() {
         )}
 
         <TouchableOpacity
-          style={[styles.button, isSaving && styles.disabledButton]}
+          style={[styles.button, { backgroundColor: colors.primary }, isSaving && styles.disabledButton]}
           onPress={handleSaveVocabulary}
           disabled={isSaving}
         >
@@ -823,16 +821,16 @@ export default function App() {
         </TouchableOpacity>
 
         <View style={{ marginTop: 24, marginBottom: 12 }}>
-          <View style={[
-            styles.filterGroup,
-            {
-              backgroundColor: colors.filterBg,
-              borderColor: colors.border,
-              borderRadius: theme === 'dark' ? 16 : 12,
-              padding: 0,
-              marginTop: 0,
-            },
-          ]}>
+          <View             style={[
+              styles.filterGroup,
+              {
+                backgroundColor: colors.filterBg,
+                borderColor: colors.border,
+                borderRadius: 12,
+                padding: 0,
+                marginTop: 0,
+              },
+            ]}>
             <TouchableOpacity
               style={{
                 flexDirection: 'row',
@@ -848,7 +846,7 @@ export default function App() {
               </Text>
               <Animated.Text
                 style={{
-                  color: theme === 'dark' ? colors.text : '#0369a1',
+                  color: colors.filterToggleText,
                   fontSize: 16,
                   fontWeight: 'bold',
                   transform: [{ rotate: arrowRotation }],
@@ -877,11 +875,11 @@ export default function App() {
                 <View style={styles.row}>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Sort</Text>
-                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border }, theme === 'dark' && { backgroundColor: colors.inputBg }]}>
                       <Picker
                         selectedValue={managementFilters.sortType}
                         onValueChange={(value) => handleManagementFilterChange('sortType', value)}
-                        style={{ color: colors.text }}
+                        style={[{ color: colors.text }, theme === 'dark' && { backgroundColor: colors.inputBg }]}
                       >
                         <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
                         {SORT_OPTIONS.map((option) => (
@@ -897,11 +895,11 @@ export default function App() {
                   </View>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border }, theme === 'dark' && { backgroundColor: colors.inputBg }]}>
                       <Picker
                         selectedValue={managementFilters.month}
                         onValueChange={(value) => handleManagementFilterChange('month', value)}
-                        style={{ color: colors.text }}
+                        style={[{ color: colors.text }, theme === 'dark' && { backgroundColor: colors.inputBg }]}
                       >
                         <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
                         {MONTHS.map((month) => (
@@ -920,11 +918,11 @@ export default function App() {
                 <View style={styles.row}>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
+                    <View style={[styles.pickerContainer, { borderColor: colors.border }, theme === 'dark' && { backgroundColor: colors.inputBg }]}>
                       <Picker
                         selectedValue={managementFilters.year}
                         onValueChange={(value) => handleManagementFilterChange('year', value)}
-                        style={{ color: colors.text }}
+                        style={[{ color: colors.text }, theme === 'dark' && { backgroundColor: colors.inputBg }]}
                       >
                         <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
                         {availableYears.map((year) => (
@@ -962,7 +960,7 @@ export default function App() {
           <TouchableOpacity
             style={[
               styles.clearAllButton,
-              { borderColor: colors.error, backgroundColor: theme === 'dark' ? 'transparent' : '#fee2e2' },
+              { borderColor: colors.clearAllButtonBorder, backgroundColor: colors.clearAllButtonBg },
               (isDeletingAll || isLoadingList || !managementMeta?.grandTotal) && styles.disabledButton,
             ]}
             onPress={() => {
@@ -989,16 +987,19 @@ export default function App() {
 
   const renderPracticeSection = () => {
     const cardContent = (
-      <View style={[{ backgroundColor: colors.card, borderRadius: 12, padding: 0 }]}>
-        <View style={{ padding: 20, paddingBottom: 0 }}>
-          {renderBackButton()}
-          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
-          <View>
+      <View style={{ backgroundColor: colors.card, borderRadius: 12, padding: 0, overflow: 'hidden' }}>
+        <View style={{ paddingTop: 20, paddingBottom: 0, paddingHorizontal: 20, width: '100%' }}>
+          <View style={{ marginBottom: 12 }}>
+            {renderBackButton()}
+            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
+          </View>
+          {allFlashcards.length > 0 && (
+          <View style={{ width: '100%', marginBottom: 16 }}>
             <TouchableOpacity
-              style={[styles.filterToggle, { backgroundColor: theme === 'dark' ? colors.surface : '#e0f2fe' }]}
+              style={[styles.filterToggle, { backgroundColor: colors.filterToggleBg }]}
               onPress={() => setShowPracticeFilters((prev) => !prev)}
             >
-              <Text style={[styles.filterToggleText, { color: theme === 'dark' ? colors.text : '#0369a1' }]}>
+              <Text style={[styles.filterToggleText, { color: colors.filterToggleText }]}>
                 {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
               </Text>
             </TouchableOpacity>
@@ -1010,89 +1011,85 @@ export default function App() {
                   {
                     backgroundColor: colors.filterBg,
                     borderColor: colors.border,
-                    borderRadius: theme === 'dark' ? 16 : 12,
+                    borderRadius: 12,
+                    marginHorizontal: 0,
                   },
                 ]}
               >
                 <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-                <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                  <Picker
+                <View style={{ marginBottom: 12 }}>
+                  <ModalPicker
                     selectedValue={filters.sortType}
                     onValueChange={(value) => handleFilterChange('sortType', value)}
-                    style={{ color: colors.text }}
-                  >
-                    <Picker.Item label="All Letters" value="" color={theme === 'dark' ? colors.text : undefined} />
-                    {SORT_OPTIONS.map((option) => (
-                      <Picker.Item
-                        key={`filter-sort-${option}`}
-                        label={option}
-                        value={option}
-                        color={theme === 'dark' ? colors.text : undefined}
-                      />
-                    ))}
-                  </Picker>
+                    items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
+                    placeholder="A - Z (All)"
+                    colors={colors}
+                    theme={theme}
+                    containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                  />
                 </View>
 
                 <View style={styles.row}>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                      <Picker
+                    <View style={{ marginBottom: 12 }}>
+                      <ModalPicker
                         selectedValue={filters.month}
                         onValueChange={(value) => handleFilterChange('month', value)}
-                        style={{ color: colors.text }}
-                      >
-                        <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
-                        {MONTHS.map((month) => (
-                          <Picker.Item
-                            key={`filter-month-${month.value}`}
-                            label={month.label}
-                            value={month.value}
-                            color={theme === 'dark' ? colors.text : undefined}
-                          />
-                        ))}
-                      </Picker>
+                        items={[{ label: 'Any', value: '' }, ...getAvailableMonthsForPractice()]}
+                        placeholder="Any"
+                        colors={colors}
+                        theme={theme}
+                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                      />
                     </View>
                   </View>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                    <View style={[styles.pickerContainer, { borderColor: colors.border }]}>
-                      <Picker
+                    <View style={{ marginBottom: 12 }}>
+                      <ModalPicker
                         selectedValue={filters.year}
                         onValueChange={(value) => handleFilterChange('year', value)}
-                        style={{ color: colors.text }}
-                      >
-                        <Picker.Item label="Any" value="" color={theme === 'dark' ? colors.text : undefined} />
-                        {availableYears.map((year) => (
-                          <Picker.Item key={`filter-year-${year}`} label={year} value={year} color={theme === 'dark' ? colors.text : undefined} />
-                        ))}
-                      </Picker>
+                        items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
+                        placeholder="Any"
+                        colors={colors}
+                        theme={theme}
+                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                      />
                     </View>
                   </View>
                 </View>
               </View>
             )}
 
-            <Text style={[styles.label, { color: colors.text }]}>Range (cards per session)</Text>
-            <View style={styles.rangeRow}>
+            <View style={{ width: '100%', marginTop: 4, marginBottom: 16 }}>
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[styles.label, { color: colors.text }]}>Range (cards per session)</Text>
+              </View>
+              <View style={styles.rangeRow}>
             {[5, 10, 15].map((value) => (
               <TouchableOpacity
                 key={`range-${value}`}
                 style={[
                   styles.rangeButton,
-                  filters.limit === String(value) && styles.rangeButtonActive,
+                  { borderColor: colors.rangeButtonBorder },
+                  filters.limit === String(value) && {
+                    backgroundColor: colors.rangeButtonActiveBg,
+                    borderColor: colors.rangeButtonActiveBorder,
+                  },
                   isLoadingCards && styles.disabledButton,
                 ]}
                 onPress={() => handleQuickRange(value)}
                 disabled={isLoadingCards}
               >
                 {isLoadingCards && filters.limit === String(value) ? (
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={colors.rangeButtonActiveText} size="small" />
                 ) : (
                   <Text
                     style={[
                       styles.rangeButtonText,
-                      filters.limit === String(value) && styles.rangeButtonTextActive,
+                      { color: colors.rangeButtonText },
+                      filters.limit === String(value) && { color: colors.rangeButtonActiveText },
                     ]}
                   >
                     {value} cards
@@ -1100,9 +1097,11 @@ export default function App() {
                 )}
               </TouchableOpacity>
             ))}
+              </View>
             </View>
 
             {practiceStatus && (
+              <View style={{ marginTop: 8 }}>
               <Text
                 style={[
                   styles.feedback,
@@ -1113,8 +1112,10 @@ export default function App() {
               >
                 {practiceStatus.message}
               </Text>
+              </View>
             )}
           </View>
+          )}
         </View>
 
         {isLoadingCards ? (
@@ -1128,13 +1129,7 @@ export default function App() {
               {currentPageFlashcards.map((card, idx) => (
                 <View
                   key={card.id || `${card.name}-${card.year}-${idx}`}
-                  style={[
-                    styles.flashcardWrapper,
-                    theme === 'dark' && {
-                      padding: 10,
-                      borderRadius: 12,
-                    },
-                  ]}
+                  style={styles.flashcardWrapper}
                 >
                   <Flashcard
                     card={card}
@@ -1146,7 +1141,7 @@ export default function App() {
                 </View>
               ))}
             </View>
-            <View style={{ paddingTop: 12, paddingBottom: 4 }}>
+            <View style={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 8, width: '100%' }}>
               <Text style={[styles.meta, { color: colors.textMuted }]}>
                 Showing {currentPageFlashcards.length} of {allFlashcards.length} cards
                 {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
@@ -1156,25 +1151,25 @@ export default function App() {
                   <TouchableOpacity
                     style={[
                       styles.practiceNavButton,
-                      styles.practiceNavPrev,
+                      { backgroundColor: colors.practiceNavPrevBg },
                       (currentCardIndex === 0 || isLoadingCards) && styles.disabledButton,
                     ]}
                     onPress={handlePrevPage}
                     disabled={currentCardIndex === 0 || isLoadingCards}
                   >
-                    <Text style={styles.practiceNavText}>Previous</Text>
+                    <Text style={[styles.practiceNavText, { color: colors.practiceNavText }]}>Previous</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
                       styles.practiceNavButton,
-                      styles.practiceNavNext,
+                      { backgroundColor: colors.practiceNavNextBg },
                       (currentCardIndex >= totalPages - 1 || isLoadingCards) &&
                       styles.disabledButton,
                     ]}
                     onPress={handleNextPage}
                     disabled={currentCardIndex >= totalPages - 1 || isLoadingCards}
                   >
-                    <Text style={styles.practiceNavText}>Next</Text>
+                    <Text style={[styles.practiceNavText, { color: colors.practiceNavText }]}>Next</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1183,26 +1178,20 @@ export default function App() {
         ) : (
           <View style={[styles.emptyStateContainer, { paddingHorizontal: 20 }]}>
             <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-              No flashcards available. Adjust filters or load data.
+              No flashcards available. Add vocabulary to get started.
             </Text>
           </View>
         )}
       </View>
     );
 
-    // Wrap with gradient border in dark mode
-    if (theme === 'dark') {
-      return (
-        <GradientBorder
-          colors={[colors.gradientStart, colors.gradientMiddle, colors.gradientEnd]}
-          borderRadius={12}
-        >
-          {cardContent}
-        </GradientBorder>
-      );
-    }
-
-    return <View style={[styles.card, { backgroundColor: colors.card, borderRadius: 12 }]}>{cardContent}</View>;
+    // Same wrapper for both modes: padding 0, spacing identical.
+    const wrapperStyle = {
+      borderRadius: 12,
+      overflow: 'hidden',
+      backgroundColor: colors.card,
+    };
+    return <View style={wrapperStyle}>{cardContent}</View>;
   };
 
   const renderDoneListSection = () => {
@@ -1212,8 +1201,8 @@ export default function App() {
       return match ? match.label.slice(0, 3) : value;
     };
 
-    const doneCardBg = theme === 'dark' ? colors.surface : '#ffffff';
-    const doneCardBorder = theme === 'dark' ? colors.borderLight : '#f1f5f9';
+    const doneCardBg = theme === 'dark' ? colors.background : '#ffffff';
+    const doneCardBorder = theme === 'dark' ? colors.primaryLight : '#f1f5f9';
 
     return (
       <View style={{ gap: 20, width: '100%', alignItems: 'flex-start' }}>
@@ -1245,15 +1234,15 @@ export default function App() {
                 paddingVertical: 12,
                 paddingHorizontal: 16,
                 borderRadius: 12,
-                backgroundColor: theme === 'dark' ? 'rgba(0,255,0,0.15)' : '#ecfdf5',
+                backgroundColor: colors.doneListReturnAllBg,
                 borderWidth: 1,
-                borderColor: theme === 'dark' ? 'rgba(0,255,0,0.3)' : '#a7f3d0',
+                borderColor: colors.doneListReturnAllBorder,
               }}
               onPress={handleReturnAllToPractice}
               activeOpacity={0.7}
             >
               <Text style={{ fontSize: 18 }}>↩</Text>
-              <Text style={{ color: theme === 'dark' ? '#4ade80' : '#059669', fontWeight: '600', fontSize: 15 }}>
+              <Text style={{ color: colors.doneListReturnAllText, fontWeight: '600', fontSize: 15 }}>
                 Return All
               </Text>
             </TouchableOpacity>
@@ -1267,15 +1256,15 @@ export default function App() {
                 paddingVertical: 12,
                 paddingHorizontal: 16,
                 borderRadius: 12,
-                backgroundColor: theme === 'dark' ? 'rgba(255,0,0,0.1)' : '#fef2f2',
+                backgroundColor: colors.doneListClearAllBg,
                 borderWidth: 1,
-                borderColor: theme === 'dark' ? 'rgba(255,0,0,0.25)' : '#fecaca',
+                borderColor: colors.doneListClearAllBorder,
               }}
               onPress={confirmClearDoneList}
               activeOpacity={0.7}
             >
               <Text style={{ fontSize: 16 }}>🗑</Text>
-              <Text style={{ color: theme === 'dark' ? '#f87171' : '#dc2626', fontWeight: '600', fontSize: 15 }}>
+              <Text style={{ color: colors.doneListClearAllText, fontWeight: '600', fontSize: 15 }}>
                 Clear All
               </Text>
             </TouchableOpacity>
@@ -1293,14 +1282,14 @@ export default function App() {
               paddingVertical: 48,
               paddingHorizontal: 24,
               alignItems: 'center',
-              backgroundColor: theme === 'dark' ? colors.surface : '#f8fafc',
+              backgroundColor: theme === 'dark' ? colors.background : '#f8fafc',
               borderRadius: 16,
               borderWidth: 1,
               borderColor: doneCardBorder,
               borderStyle: 'dashed',
             }}
           >
-            <Text style={{ fontSize: 40, marginBottom: 12 }}>✓</Text>
+            <Text style={{ fontSize: 40, marginBottom: 12, color: colors.success || '#16a34a' }}>✓</Text>
             <Text style={[styles.emptyStateText, { color: colors.textMuted, textAlign: 'center' }]}>
               No items yet. Mark cards as done during practice to add them here.
             </Text>
@@ -1389,14 +1378,14 @@ export default function App() {
                       borderRadius: 10,
                       backgroundColor: 'transparent',
                       borderWidth: 1,
-                      borderColor: theme === 'dark' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                      borderColor: colors.doneListRemoveBorder,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                     onPress={() => {
                       Alert.alert(
                         'Remove',
-                        `Remove "${entry.name}" from done list?`,
+                        `Remove ${entry.name} from done list?`,
                         [
                           { text: 'Cancel', style: 'cancel' },
                           {
@@ -1413,7 +1402,7 @@ export default function App() {
                     {deletingDoneId === entry.id ? (
                       <ActivityIndicator size="small" color={colors.error} />
                     ) : (
-                      <Text style={{ color: colors.error || '#dc2626', fontWeight: '600', fontSize: 14 }}>Remove</Text>
+                      <Text style={{ color: colors.doneListRemoveText, fontWeight: '600', fontSize: 14 }}>Remove</Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -1423,13 +1412,18 @@ export default function App() {
               return (
                 <View key={entry.id} style={{ width: '100%', alignSelf: 'stretch' }}>
                   {theme === 'dark' ? (
-                    <GradientBorder
-                      colors={[colors.gradientStart, colors.gradientMiddle, colors.gradientEnd]}
-                      borderRadius={12}
-                      style={{ marginBottom: 14 }}
+                    <View
+                      style={{
+                        marginBottom: 14,
+                        borderRadius: 12,
+                        borderWidth: 2,
+                        borderColor: colors.primaryLight,
+                        backgroundColor: colors.background,
+                        overflow: 'hidden',
+                      }}
                     >
                       {cardInner}
-                    </GradientBorder>
+                    </View>
                   ) : (
                     <View
                       style={{
@@ -1472,13 +1466,13 @@ export default function App() {
           <TouchableOpacity
             style={[
               styles.paginationButton,
-              { borderColor: colors.border },
+              { borderColor: colors.rangeButtonBorder, backgroundColor: 'transparent' },
               managementFilters.page === 1 && styles.disabledButton,
             ]}
             onPress={() => handleManagementPageChange('prev')}
             disabled={managementFilters.page === 1}
           >
-            <Text style={[styles.paginationText, { color: colors.text }]}>Prev</Text>
+            <Text style={[styles.paginationText, { color: colors.rangeButtonText }]}>Prev</Text>
           </TouchableOpacity>
           <Text style={[styles.paginationMeta, { color: colors.text }]}>
             Page {managementMeta.currentPage} of {managementMeta.totalPages}
@@ -1486,14 +1480,14 @@ export default function App() {
           <TouchableOpacity
             style={[
               styles.paginationButton,
-              { borderColor: colors.border },
+              { borderColor: colors.rangeButtonBorder, backgroundColor: 'transparent' },
               managementMeta.currentPage >= managementMeta.totalPages &&
               styles.disabledButton,
             ]}
             onPress={() => handleManagementPageChange('next')}
             disabled={managementMeta.currentPage >= managementMeta.totalPages}
           >
-            <Text style={[styles.paginationText, { color: colors.text }]}>Next</Text>
+            <Text style={[styles.paginationText, { color: colors.rangeButtonText }]}>Next</Text>
           </TouchableOpacity>
         </View>
       )}

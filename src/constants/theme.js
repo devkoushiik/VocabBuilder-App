@@ -49,6 +49,30 @@ export const lightTheme = {
   flashcardLabel: '#1e40af',
   flashcardValue: '#1e3a8a',
   flashcardHint: '#3b82f6',
+
+  // Buttons (same design, theme-driven colors)
+  backButtonBg: '#f1f5f9',
+  backButtonBorder: '#e2e8f0',
+  filterToggleBg: '#e0f2fe',
+  filterToggleText: '#0369a1',
+  rangeButtonBorder: '#94a3b8',
+  rangeButtonText: '#475569',
+  rangeButtonActiveBg: '#1d4ed8',
+  rangeButtonActiveBorder: '#1d4ed8',
+  rangeButtonActiveText: '#fff',
+  practiceNavPrevBg: '#f97316',
+  practiceNavNextBg: '#a855f7',
+  practiceNavText: '#fff',
+  clearAllButtonBg: '#fee2e2',
+  clearAllButtonBorder: '#dc2626',
+  doneListReturnAllBg: '#ecfdf5',
+  doneListReturnAllBorder: '#a7f3d0',
+  doneListReturnAllText: '#059669',
+  doneListClearAllBg: '#fef2f2',
+  doneListClearAllBorder: '#fecaca',
+  doneListClearAllText: '#dc2626',
+  doneListRemoveBorder: '#e2e8f0',
+  doneListRemoveText: '#dc2626',
 };
 
 export const darkTheme = {
@@ -96,7 +120,7 @@ export const darkTheme = {
   loadingText: '#FFFFFF', // Pure White
 
   // Flashcard
-  flashcardBg: '#1E1E1E', // Standard dark surface
+  flashcardBg: '#0D0D0D', // Near black - match card background
   flashcardBorder: '#2C2C2E', // Lighter border
   flashcardLabel: '#FF453A', // Softer Red
   flashcardValue: '#FFFFFF', // Pure White
@@ -106,5 +130,29 @@ export const darkTheme = {
   gradientStart: '#000000', // Pure Dark/Black
   gradientMiddle: '#FF0000', // Pure Red accent
   gradientEnd: '#1A1A1A', // Very dark gray
+
+  // Buttons (same design, theme-driven colors - flipped for dark)
+  backButtonBg: 'rgba(255,255,255,0.08)',
+  backButtonBorder: 'rgba(255,255,255,0.12)',
+  filterToggleBg: '#1A1A1A',
+  filterToggleText: '#FFFFFF',
+  rangeButtonBorder: '#2A2A2A',
+  rangeButtonText: '#B0B0B0',
+  rangeButtonActiveBg: '#FF0000',
+  rangeButtonActiveBorder: '#FF0000',
+  rangeButtonActiveText: '#fff',
+  practiceNavPrevBg: '#f97316',
+  practiceNavNextBg: '#a855f7',
+  practiceNavText: '#fff',
+  clearAllButtonBg: 'rgba(255,0,0,0.15)',
+  clearAllButtonBorder: '#FF0000',
+  doneListReturnAllBg: 'rgba(0,255,0,0.15)',
+  doneListReturnAllBorder: 'rgba(0,255,0,0.3)',
+  doneListReturnAllText: '#4ade80',
+  doneListClearAllBg: 'rgba(255,0,0,0.1)',
+  doneListClearAllBorder: 'rgba(255,0,0,0.25)',
+  doneListClearAllText: '#f87171',
+  doneListRemoveBorder: 'rgba(255,255,255,0.25)',
+  doneListRemoveText: '#FF0000',
 };
 

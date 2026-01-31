@@ -55,11 +55,15 @@ export const getVocabulary = async (params = {}) => {
             conditions.push('inDoneList = 1');
         }
 
-        if (sortType) {
-            const sortTypes = sortType.split(',').map(s => s.trim().toUpperCase());
-            const placeholders = sortTypes.map(() => '?').join(',');
-            conditions.push(`sortType IN (${placeholders})`);
-            values.push(...sortTypes);
+        if (sortType && String(sortType).trim()) {
+            const sortTypes = String(sortType).split(',')
+                .map(s => s.trim().toUpperCase())
+                .filter(s => s.length === 1 && /[A-Z]/.test(s));
+            if (sortTypes.length > 0) {
+                const placeholders = sortTypes.map(() => '?').join(',');
+                conditions.push(`sortType IN (${placeholders})`);
+                values.push(...sortTypes);
+            }
         }
 
         if (month) {

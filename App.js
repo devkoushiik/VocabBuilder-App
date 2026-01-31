@@ -741,8 +741,25 @@ export default function App() {
   );
 
   const renderBackButton = () => (
-    <TouchableOpacity style={styles.backButton} onPress={() => setActiveView('home')}>
-      <Text style={[styles.backButtonText, { color: colors.primary }]}>← Home</Text>
+    <TouchableOpacity
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        gap: 8,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        marginBottom: 16,
+        borderRadius: 12,
+        backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+        borderWidth: 1,
+        borderColor: theme === 'dark' ? 'rgba(255,255,255,0.12)' : '#e2e8f0',
+      }}
+      onPress={() => setActiveView('home')}
+      activeOpacity={0.7}
+    >
+      <Text style={{ fontSize: 20, color: colors.primary }}>←</Text>
+      <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 16 }}>Home</Text>
     </TouchableOpacity>
   );
 
@@ -975,8 +992,8 @@ export default function App() {
       <View style={[{ backgroundColor: colors.card, borderRadius: 12, padding: 0 }]}>
         <View style={{ padding: 20, paddingBottom: 0 }}>
           {renderBackButton()}
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>Practice Flashcards</Text>
-          <View style={styles.fullBleed}>
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
+          <View>
             <TouchableOpacity
               style={[styles.filterToggle, { backgroundColor: theme === 'dark' ? colors.surface : '#e0f2fe' }]}
               onPress={() => setShowPracticeFilters((prev) => !prev)}
@@ -1101,7 +1118,7 @@ export default function App() {
         </View>
 
         {isLoadingCards ? (
-          <View style={styles.loadingContainer}>
+          <View style={[styles.loadingContainer, { paddingHorizontal: 20 }]}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={[styles.loadingText, { color: colors.text }]}>Loading flashcards...</Text>
           </View>
@@ -1129,7 +1146,7 @@ export default function App() {
                 </View>
               ))}
             </View>
-            <View style={{ padding: 20, paddingTop: 0 }}>
+            <View style={{ paddingTop: 12, paddingBottom: 4 }}>
               <Text style={[styles.meta, { color: colors.textMuted }]}>
                 Showing {currentPageFlashcards.length} of {allFlashcards.length} cards
                 {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
@@ -1164,7 +1181,7 @@ export default function App() {
             </View>
           </View>
         ) : (
-          <View style={styles.emptyStateContainer}>
+          <View style={[styles.emptyStateContainer, { paddingHorizontal: 20 }]}>
             <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
               No flashcards available. Adjust filters or load data.
             </Text>
@@ -1195,83 +1212,195 @@ export default function App() {
       return match ? match.label.slice(0, 3) : value;
     };
 
+    const doneCardBg = theme === 'dark' ? colors.surface : '#ffffff';
+    const doneCardBorder = theme === 'dark' ? colors.borderLight : '#f1f5f9';
+
     return (
-      <View style={{ gap: 16 }}>
+      <View style={{ gap: 20, width: '100%', alignItems: 'flex-start' }}>
         {renderBackButton()}
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>Done List</Text>
-        <Text style={[styles.subtitle, { color: colors.textSecondary, marginBottom: 16 }]}>
-          Vocabulary you marked as done. Return to practice or remove permanently.
-        </Text>
+        <View style={{ marginBottom: 4, width: '100%', alignSelf: 'stretch' }}>
+          <Text style={[styles.sectionTitle, { color: colors.text, fontSize: 24, textAlign: 'left' }]}>Done List</Text>
+          <Text style={[styles.subtitle, { color: colors.textSecondary, fontSize: 15, marginTop: 4, textAlign: 'left' }]}>
+            Words you've mastered. Return to practice or remove.
+          </Text>
+        </View>
 
         {doneList.length > 0 && (
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+          <View
+            style={{
+              flexDirection: 'row',
+              gap: 10,
+              marginBottom: 8,
+              width: '100%',
+              alignSelf: 'stretch',
+            }}
+          >
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: colors.success || '#16a34a', flex: 1, minWidth: 140 }]}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                borderRadius: 12,
+                backgroundColor: theme === 'dark' ? 'rgba(0,255,0,0.15)' : '#ecfdf5',
+                borderWidth: 1,
+                borderColor: theme === 'dark' ? 'rgba(0,255,0,0.3)' : '#a7f3d0',
+              }}
               onPress={handleReturnAllToPractice}
+              activeOpacity={0.7}
             >
-              <Text style={styles.buttonText}>Return All to Practice</Text>
+              <Text style={{ fontSize: 18 }}>↩</Text>
+              <Text style={{ color: theme === 'dark' ? '#4ade80' : '#059669', fontWeight: '600', fontSize: 15 }}>
+                Return All
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: colors.error || '#dc2626', flex: 1, minWidth: 100 }]}
+              style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                paddingVertical: 12,
+                paddingHorizontal: 16,
+                borderRadius: 12,
+                backgroundColor: theme === 'dark' ? 'rgba(255,0,0,0.1)' : '#fef2f2',
+                borderWidth: 1,
+                borderColor: theme === 'dark' ? 'rgba(255,0,0,0.25)' : '#fecaca',
+              }}
               onPress={confirmClearDoneList}
+              activeOpacity={0.7}
             >
-              <Text style={styles.buttonText}>Delete All</Text>
+              <Text style={{ fontSize: 16 }}>🗑</Text>
+              <Text style={{ color: theme === 'dark' ? '#f87171' : '#dc2626', fontWeight: '600', fontSize: 15 }}>
+                Clear All
+              </Text>
             </TouchableOpacity>
           </View>
         )}
 
         {isLoadingDoneList ? (
-          <View style={styles.loadingContainer}>
+          <View style={[styles.loadingContainer, { paddingVertical: 48, width: '100%', alignSelf: 'stretch' }]}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.text }]}>Loading done list...</Text>
+            <Text style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>Loading...</Text>
           </View>
         ) : doneList.length === 0 ? (
-          <View style={styles.emptyStateContainer}>
-            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-              No items in done list. Mark cards as done during practice to add them here.
+          <View
+            style={{
+              paddingVertical: 48,
+              paddingHorizontal: 24,
+              alignItems: 'center',
+              backgroundColor: theme === 'dark' ? colors.surface : '#f8fafc',
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: doneCardBorder,
+              borderStyle: 'dashed',
+            }}
+          >
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>✓</Text>
+            <Text style={[styles.emptyStateText, { color: colors.textMuted, textAlign: 'center' }]}>
+              No items yet. Mark cards as done during practice to add them here.
             </Text>
           </View>
         ) : (
-          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
-            {doneList.map((entry) => (
-              <View
-                key={entry.id}
-                style={[
-                  styles.card,
-                  {
-                    backgroundColor: theme === 'dark' ? colors.surface : '#fff',
-                    borderColor: colors.border,
-                    borderWidth: 1,
+          <View style={{ gap: 14, width: '100%', alignSelf: 'stretch' }}>
+            {doneList.map((entry) => {
+              const cardInner = (
+                <View
+                  style={{
+                    backgroundColor: doneCardBg,
+                    borderRadius: theme === 'dark' ? 10 : 12,
+                    padding: 20,
+                    width: '100%',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, width: '100%' }}>
+                  <Text
+                    style={{
+                      fontSize: 20,
+                      fontWeight: '700',
+                      color: colors.text,
+                      flex: 1,
+                      letterSpacing: -0.3,
+                      textAlign: 'left',
+                    }}
+                    numberOfLines={2}
+                  >
+                    {entry.name}
+                  </Text>
+                  <View
+                    style={{
+                      paddingHorizontal: 10,
+                      paddingVertical: 4,
+                      borderRadius: 8,
+                      backgroundColor: theme === 'dark' ? colors.border : '#f1f5f9',
+                    }}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>
+                      {entry.sortType}
+                    </Text>
+                  </View>
+                </View>
+                <Text
+                  style={{
+                    fontSize: 16,
+                    color: colors.textSecondary,
+                    lineHeight: 22,
                     marginBottom: 12,
-                  },
-                ]}
-              >
-                <Text style={[styles.sectionTitle, { color: colors.text, fontSize: 18, marginBottom: 4 }]}>
-                  {entry.name}
-                </Text>
-                <Text style={[styles.subtitle, { color: colors.textSecondary, marginBottom: 8 }]}>
+                    textAlign: 'left',
+                  }}
+                  numberOfLines={3}
+                >
                   {entry.meaning}
                 </Text>
-                <Text style={[styles.feedback, { color: colors.textMuted, marginBottom: 12 }]}>
-                  {formatMonthLabel(entry.month)} {entry.year} • Sort {entry.sortType}
+                <Text
+                  style={{
+                    fontSize: 13,
+                    color: colors.textMuted,
+                    marginBottom: 16,
+                    textAlign: 'left',
+                  }}
+                >
+                  {formatMonthLabel(entry.month)} {entry.year}
                 </Text>
-                <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
                   <TouchableOpacity
-                    style={[styles.button, { backgroundColor: colors.primary, flex: 1 }]}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      borderRadius: 10,
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                    }}
                     onPress={() => handleReturnToPractice(entry.id)}
+                    activeOpacity={0.8}
                   >
-                    <Text style={styles.buttonText}>Return to Practice</Text>
+                    <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Return to Practice</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.button, { backgroundColor: colors.error || '#dc2626', flex: 1 }]}
+                    style={{
+                      paddingVertical: 10,
+                      paddingHorizontal: 14,
+                      borderRadius: 10,
+                      backgroundColor: 'transparent',
+                      borderWidth: 1,
+                      borderColor: theme === 'dark' ? 'rgba(255,255,255,0.25)' : '#e2e8f0',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
                     onPress={() => {
                       Alert.alert(
-                        'Delete',
-                        `Delete "${entry.name}" from done list?`,
+                        'Remove',
+                        `Remove "${entry.name}" from done list?`,
                         [
                           { text: 'Cancel', style: 'cancel' },
                           {
-                            text: 'Delete',
+                            text: 'Remove',
                             style: 'destructive',
                             onPress: () => handleDeleteFromDoneList(entry.id),
                           },
@@ -1279,17 +1408,48 @@ export default function App() {
                       );
                     }}
                     disabled={deletingDoneId === entry.id}
+                    activeOpacity={0.8}
                   >
                     {deletingDoneId === entry.id ? (
-                      <ActivityIndicator color="#fff" />
+                      <ActivityIndicator size="small" color={colors.error} />
                     ) : (
-                      <Text style={styles.buttonText}>Delete</Text>
+                      <Text style={{ color: colors.error || '#dc2626', fontWeight: '600', fontSize: 14 }}>Remove</Text>
                     )}
                   </TouchableOpacity>
                 </View>
               </View>
-            ))}
-          </ScrollView>
+            );
+
+              return (
+                <View key={entry.id} style={{ width: '100%', alignSelf: 'stretch' }}>
+                  {theme === 'dark' ? (
+                    <GradientBorder
+                      colors={[colors.gradientStart, colors.gradientMiddle, colors.gradientEnd]}
+                      borderRadius={12}
+                      style={{ marginBottom: 14 }}
+                    >
+                      {cardInner}
+                    </GradientBorder>
+                  ) : (
+                    <View
+                      style={{
+                        shadowColor: colors.primary || '#3b82f6',
+                        shadowOpacity: 0.2,
+                        shadowRadius: 12,
+                        shadowOffset: { width: 0, height: 6 },
+                        elevation: 6,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: colors.flashcardBorder || '#dbeafe',
+                      }}
+                    >
+                      {cardInner}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
         )}
       </View>
     );

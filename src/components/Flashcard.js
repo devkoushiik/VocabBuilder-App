@@ -92,20 +92,20 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone 
         <TouchableOpacity
           style={{
             position: 'absolute',
-            top: 12,
-            right: 12,
+            top: 14,
+            right: 14,
             zIndex: 10,
-            width: 36,
-            height: 36,
-            borderRadius: 18,
+            width: 28,
+            height: 28,
+            borderRadius: 6,
             backgroundColor: colors.success || '#16a34a',
             alignItems: 'center',
             justifyContent: 'center',
           }}
           onPress={handleMarkDone}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
-          <Text style={{ fontSize: 20, color: '#fff' }}>✓</Text>
+          <Text style={{ fontSize: 14, color: '#fff', fontWeight: '700' }}>✓</Text>
         </TouchableOpacity>
       )}
       <View>

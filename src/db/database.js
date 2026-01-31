@@ -19,10 +19,18 @@ export const initDatabase = async () => {
         sortType TEXT NOT NULL,
         month INTEGER NOT NULL,
         year INTEGER NOT NULL,
+        inDoneList INTEGER DEFAULT 0,
         createdAt INTEGER DEFAULT (strftime('%s', 'now')),
         updatedAt INTEGER DEFAULT (strftime('%s', 'now'))
       );
     `);
+
+    // Migration: add inDoneList column if it doesn't exist (for existing DBs)
+    try {
+      await db.execAsync('ALTER TABLE vocabulary ADD COLUMN inDoneList INTEGER DEFAULT 0');
+    } catch (e) {
+      // Column already exists, ignore
+    }
 
     console.log('Database initialized successfully');
     return db;

@@ -29,6 +29,10 @@ import {
   clearAllVocabulary,
   getFlashcards,
   getAvailableYears,
+  getDoneList,
+  moveToDoneList,
+  moveToPracticeList,
+  clearDoneList,
 } from './src/db/operations';
 import {
   validatePracticeFilters,
@@ -131,6 +135,9 @@ export default function App() {
   const [randomQuote, setRandomQuote] = useState(getRandomQuote());
   const [isDbReady, setIsDbReady] = useState(false);
   const [availableYears, setAvailableYears] = useState([CURRENT_YEAR]);
+  const [doneList, setDoneList] = useState([]);
+  const [isLoadingDoneList, setIsLoadingDoneList] = useState(false);
+  const [deletingDoneId, setDeletingDoneId] = useState(null);
 
   const isEditing = Boolean(editingId);
 
@@ -259,6 +266,12 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [filters.sortType, filters.month, filters.year, activeView, handleLoadFlashcards]);
+
+  useEffect(() => {
+    if (activeView === 'doneList') {
+      loadDoneList();
+    }
+  }, [activeView, loadDoneList]);
 
   useEffect(() => {
     const trimmed = form.name.trim();
@@ -427,6 +440,89 @@ export default function App() {
       setCurrentCardIndex(currentCardIndex + 1);
     }
   };
+
+  const handleMarkDone = useCallback(async (card) => {
+    if (!card?.id) return;
+    try {
+      await moveToDoneList(card.id);
+      setAllFlashcards((prev) => prev.filter((c) => c.id !== card.id));
+      const limit = Number(filters.limit || 5);
+      const newLen = allFlashcards.length - 1;
+      const maxPage = Math.ceil(newLen / limit) - 1;
+      if (currentCardIndex > maxPage && maxPage >= 0) {
+        setCurrentCardIndex(maxPage);
+      }
+    } catch (err) {
+      setPracticeStatus({ type: 'error', message: err.message || 'Failed to move to done list.' });
+    }
+  }, [filters.limit, allFlashcards.length, currentCardIndex]);
+
+  const loadDoneList = useCallback(async () => {
+    try {
+      setIsLoadingDoneList(true);
+      const data = await getDoneList();
+      setDoneList(data || []);
+    } catch (err) {
+      console.error('Failed to load done list:', err);
+      setDoneList([]);
+    } finally {
+      setIsLoadingDoneList(false);
+    }
+  }, []);
+
+  const handleReturnToPractice = useCallback(async (id) => {
+    try {
+      await moveToPracticeList(id);
+      setDoneList((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to return to practice.');
+    }
+  }, []);
+
+  const handleReturnAllToPractice = useCallback(async () => {
+    try {
+      for (const item of doneList) {
+        await moveToPracticeList(item.id);
+      }
+      setDoneList([]);
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to return items to practice.');
+    }
+  }, [doneList]);
+
+  const handleDeleteFromDoneList = useCallback(async (id) => {
+    try {
+      setDeletingDoneId(id);
+      await deleteVocabulary(id);
+      setDoneList((prev) => prev.filter((item) => item.id !== id));
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Failed to delete.');
+    } finally {
+      setDeletingDoneId(null);
+    }
+  }, []);
+
+  const confirmClearDoneList = useCallback(() => {
+    Alert.alert(
+      'Clear Done List',
+      'Delete all items in the done list? This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await clearDoneList();
+              setDoneList([]);
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Failed to clear done list.');
+            }
+          },
+        },
+      ]
+    );
+  }, []);
 
   const handleManagementFilterChange = (key, value) => {
     setManagementFilters((prev) => ({
@@ -633,6 +729,12 @@ export default function App() {
           onPress={() => setActiveView('practice')}
         >
           <Text style={styles.secondaryCtaText}>Practice Flashcards</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.secondaryCta, { borderColor: '#fff', backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}
+          onPress={() => setActiveView('doneList')}
+        >
+          <Text style={styles.secondaryCtaText}>Done List</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -874,17 +976,17 @@ export default function App() {
         <View style={{ padding: 20, paddingBottom: 0 }}>
           {renderBackButton()}
           <Text style={[styles.sectionTitle, { color: colors.text }]}>Practice Flashcards</Text>
-          <TouchableOpacity
-            style={[styles.filterToggle, { backgroundColor: theme === 'dark' ? colors.surface : '#e0f2fe' }]}
-            onPress={() => setShowPracticeFilters((prev) => !prev)}
-          >
-            <Text style={[styles.filterToggleText, { color: theme === 'dark' ? colors.text : '#0369a1' }]}>
-              {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
-            </Text>
-          </TouchableOpacity>
+          <View style={styles.fullBleed}>
+            <TouchableOpacity
+              style={[styles.filterToggle, { backgroundColor: theme === 'dark' ? colors.surface : '#e0f2fe' }]}
+              onPress={() => setShowPracticeFilters((prev) => !prev)}
+            >
+              <Text style={[styles.filterToggleText, { color: theme === 'dark' ? colors.text : '#0369a1' }]}>
+                {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
+              </Text>
+            </TouchableOpacity>
 
-          {showPracticeFilters && (
-            <View style={styles.fullBleed}>
+            {showPracticeFilters && (
               <View
                 style={[
                   styles.practiceFilters,
@@ -952,11 +1054,10 @@ export default function App() {
                   </View>
                 </View>
               </View>
-            </View>
-          )}
+            )}
 
-          <Text style={[styles.label, { color: colors.text }]}>Range (cards per session)</Text>
-          <View style={styles.rangeRow}>
+            <Text style={[styles.label, { color: colors.text }]}>Range (cards per session)</Text>
+            <View style={styles.rangeRow}>
             {[5, 10, 15].map((value) => (
               <TouchableOpacity
                 key={`range-${value}`}
@@ -982,20 +1083,21 @@ export default function App() {
                 )}
               </TouchableOpacity>
             ))}
-          </View>
+            </View>
 
-          {practiceStatus && (
-            <Text
-              style={[
-                styles.feedback,
-                practiceStatus.type === 'error'
-                  ? { color: colors.error }
-                  : { color: colors.success },
-              ]}
-            >
-              {practiceStatus.message}
-            </Text>
-          )}
+            {practiceStatus && (
+              <Text
+                style={[
+                  styles.feedback,
+                  practiceStatus.type === 'error'
+                    ? { color: colors.error }
+                    : { color: colors.success },
+                ]}
+              >
+                {practiceStatus.message}
+              </Text>
+            )}
+          </View>
         </View>
 
         {isLoadingCards ? (
@@ -1017,7 +1119,13 @@ export default function App() {
                     },
                   ]}
                 >
-                  <Flashcard card={card} theme={colors} themeMode={theme} />
+                  <Flashcard
+                    card={card}
+                    theme={colors}
+                    themeMode={theme}
+                    showMarkDone
+                    onMarkDone={handleMarkDone}
+                  />
                 </View>
               ))}
             </View>
@@ -1078,6 +1186,113 @@ export default function App() {
     }
 
     return <View style={[styles.card, { backgroundColor: colors.card, borderRadius: 12 }]}>{cardContent}</View>;
+  };
+
+  const renderDoneListSection = () => {
+    const formatMonthLabel = (value) => {
+      if (value === undefined || value === null || value === '') return '—';
+      const match = MONTHS.find((m) => m.value === String(value));
+      return match ? match.label.slice(0, 3) : value;
+    };
+
+    return (
+      <View style={{ gap: 16 }}>
+        {renderBackButton()}
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Done List</Text>
+        <Text style={[styles.subtitle, { color: colors.textSecondary, marginBottom: 16 }]}>
+          Vocabulary you marked as done. Return to practice or remove permanently.
+        </Text>
+
+        {doneList.length > 0 && (
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: colors.success || '#16a34a', flex: 1, minWidth: 140 }]}
+              onPress={handleReturnAllToPractice}
+            >
+              <Text style={styles.buttonText}>Return All to Practice</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: colors.error || '#dc2626', flex: 1, minWidth: 100 }]}
+              onPress={confirmClearDoneList}
+            >
+              <Text style={styles.buttonText}>Delete All</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {isLoadingDoneList ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.text }]}>Loading done list...</Text>
+          </View>
+        ) : doneList.length === 0 ? (
+          <View style={styles.emptyStateContainer}>
+            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
+              No items in done list. Mark cards as done during practice to add them here.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            {doneList.map((entry) => (
+              <View
+                key={entry.id}
+                style={[
+                  styles.card,
+                  {
+                    backgroundColor: theme === 'dark' ? colors.surface : '#fff',
+                    borderColor: colors.border,
+                    borderWidth: 1,
+                    marginBottom: 12,
+                  },
+                ]}
+              >
+                <Text style={[styles.sectionTitle, { color: colors.text, fontSize: 18, marginBottom: 4 }]}>
+                  {entry.name}
+                </Text>
+                <Text style={[styles.subtitle, { color: colors.textSecondary, marginBottom: 8 }]}>
+                  {entry.meaning}
+                </Text>
+                <Text style={[styles.feedback, { color: colors.textMuted, marginBottom: 12 }]}>
+                  {formatMonthLabel(entry.month)} {entry.year} • Sort {entry.sortType}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 12 }}>
+                  <TouchableOpacity
+                    style={[styles.button, { backgroundColor: colors.primary, flex: 1 }]}
+                    onPress={() => handleReturnToPractice(entry.id)}
+                  >
+                    <Text style={styles.buttonText}>Return to Practice</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.button, { backgroundColor: colors.error || '#dc2626', flex: 1 }]}
+                    onPress={() => {
+                      Alert.alert(
+                        'Delete',
+                        `Delete "${entry.name}" from done list?`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Delete',
+                            style: 'destructive',
+                            onPress: () => handleDeleteFromDoneList(entry.id),
+                          },
+                        ]
+                      );
+                    }}
+                    disabled={deletingDoneId === entry.id}
+                  >
+                    {deletingDoneId === entry.id ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.buttonText}>Delete</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+        )}
+      </View>
+    );
   };
 
   const renderAddFooter = () => (
@@ -1193,8 +1408,9 @@ export default function App() {
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <ScrollView contentInsetAdjustmentBehavior="automatic">
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-          {commonHeader}
+          {activeView !== 'practice' && activeView !== 'doneList' && commonHeader}
           {activeView === 'practice' && renderPracticeSection()}
+          {activeView === 'doneList' && renderDoneListSection()}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1298,6 +1514,8 @@ const styles = StyleSheet.create({
   },
   fullBleed: {
     marginHorizontal: -20,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   wrap: {
     flexWrap: 'wrap',

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Audio } from 'expo-av';
 
-const Flashcard = ({ card, theme, themeMode = 'light' }) => {
+const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone }) => {
   const [showBack, setShowBack] = useState(false);
   const [sound, setSound] = useState();
 
@@ -81,8 +81,33 @@ const Flashcard = ({ card, theme, themeMode = 'light' }) => {
     },
   };
 
+  const handleMarkDone = (e) => {
+    e?.stopPropagation?.();
+    onMarkDone?.(card);
+  };
+
   return (
-    <TouchableOpacity style={cardStyles.card} onPress={handleToggle}>
+    <TouchableOpacity style={cardStyles.card} onPress={handleToggle} activeOpacity={0.9}>
+      {showMarkDone && onMarkDone && (
+        <TouchableOpacity
+          style={{
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            zIndex: 10,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: colors.success || '#16a34a',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+          onPress={handleMarkDone}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={{ fontSize: 20, color: '#fff' }}>✓</Text>
+        </TouchableOpacity>
+      )}
       <View>
         <Text style={cardStyles.label}>{showBack ? 'Vocabulary' : 'Meaning'}</Text>
         <Text style={cardStyles.value}>{showBack ? card.name : card.meaning}</Text>

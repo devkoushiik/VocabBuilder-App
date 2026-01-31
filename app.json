@@ -18,7 +18,6 @@
     },
     "android": {
       "package": "com.vocabcoach.app",
-      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1e40af"

@@ -39,11 +39,21 @@ export const getVocabulary = async (params = {}) => {
             search,
             limit = 10,
             page = 1,
+            excludeDoneList = false,
+            doneListOnly = false,
         } = params;
 
         // Build WHERE clause
         const conditions = [];
         const values = [];
+
+        if (excludeDoneList) {
+            conditions.push('(inDoneList = 0 OR inDoneList IS NULL)');
+        }
+
+        if (doneListOnly) {
+            conditions.push('inDoneList = 1');
+        }
 
         if (sortType) {
             const sortTypes = sortType.split(',').map(s => s.trim().toUpperCase());
@@ -173,9 +183,73 @@ export const clearAllVocabulary = async () => {
 };
 
 /**
- * Get flashcards (same as getVocabulary but can have different logic if needed)
+ * Get flashcards for practice (excludes items in done list)
  */
-export const getFlashcards = getVocabulary;
+export const getFlashcards = async (params = {}) => {
+    return getVocabulary({ ...params, excludeDoneList: true });
+};
+
+/**
+ * Get done list vocabulary
+ */
+export const getDoneList = async () => {
+    try {
+        const result = await getVocabulary({
+            doneListOnly: true,
+            limit: 1000,
+            page: 1,
+        });
+        return result.data || [];
+    } catch (error) {
+        console.error('Error getting done list:', error);
+        throw new Error('Failed to get done list');
+    }
+};
+
+/**
+ * Move vocabulary to done list
+ */
+export const moveToDoneList = async (id) => {
+    try {
+        await db.runAsync(
+            'UPDATE vocabulary SET inDoneList = 1, updatedAt = ? WHERE id = ?',
+            [Math.floor(Date.now() / 1000), id]
+        );
+        return await db.getFirstAsync('SELECT * FROM vocabulary WHERE id = ?', [id]);
+    } catch (error) {
+        console.error('Error moving to done list:', error);
+        throw new Error('Failed to move to done list');
+    }
+};
+
+/**
+ * Move vocabulary back to practice list
+ */
+export const moveToPracticeList = async (id) => {
+    try {
+        await db.runAsync(
+            'UPDATE vocabulary SET inDoneList = 0, updatedAt = ? WHERE id = ?',
+            [Math.floor(Date.now() / 1000), id]
+        );
+        return await db.getFirstAsync('SELECT * FROM vocabulary WHERE id = ?', [id]);
+    } catch (error) {
+        console.error('Error moving to practice list:', error);
+        throw new Error('Failed to move to practice list');
+    }
+};
+
+/**
+ * Delete all items from done list
+ */
+export const clearDoneList = async () => {
+    try {
+        const result = await db.runAsync('DELETE FROM vocabulary WHERE inDoneList = 1');
+        return { deletedCount: result.changes || 0 };
+    } catch (error) {
+        console.error('Error clearing done list:', error);
+        throw new Error('Failed to clear done list');
+    }
+};
 
 /**
  * Get distinct years from vocabulary

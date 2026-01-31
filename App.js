@@ -3,17 +3,19 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -93,6 +95,11 @@ const getRandomQuote = () => {
   return INSPIRATIONAL_QUOTES[Math.floor(Math.random() * INSPIRATIONAL_QUOTES.length)];
 };
 
+const getSortType = (name) => {
+  const first = (name || '').trim().charAt(0).toUpperCase();
+  return /[A-Z]/.test(first) ? first : 'A';
+};
+
 const defaultForm = {
   name: '',
   meaning: '',
@@ -148,6 +155,9 @@ export default function App() {
   const [isLoadingDoneList, setIsLoadingDoneList] = useState(false);
   const [deletingDoneId, setDeletingDoneId] = useState(null);
   const [copiedNumber, setCopiedNumber] = useState(false);
+  const [isBulkInserting, setIsBulkInserting] = useState(false);
+  const [bulkInsertStatus, setBulkInsertStatus] = useState(null);
+  const [pastedJson, setPastedJson] = useState('');
   const [copiedEmail, setCopiedEmail] = useState(false);
 
   const isEditing = Boolean(editingId);
@@ -397,6 +407,115 @@ export default function App() {
       setIsSaving(false);
     }
   };
+
+  const processBulkInsertContent = useCallback(async (content) => {
+    let data;
+    try {
+      data = JSON.parse(content);
+    } catch {
+      setBulkInsertStatus({ type: 'error', message: 'Invalid JSON format.' });
+      return;
+    }
+
+    const items = Array.isArray(data) ? data : data.items || data.vocabulary || [];
+    if (!Array.isArray(items) || items.length === 0) {
+      setBulkInsertStatus({
+        type: 'error',
+        message: 'JSON must contain an array of { name, meaning } objects.',
+      });
+      return;
+    }
+
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+    let inserted = 0;
+    const errors = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const name = item?.name != null ? String(item.name).trim() : '';
+      const meaning = item?.meaning != null ? String(item.meaning).trim() : '';
+
+      if (!name || !meaning) {
+        errors.push(`Row ${i + 1}: missing name or meaning`);
+        continue;
+      }
+
+      try {
+        await addVocabulary({
+          name,
+          meaning,
+          sortType: item.sortType && /^[A-Z]$/i.test(item.sortType) ? item.sortType.toUpperCase() : getSortType(name),
+          month: item.month != null && item.month >= 1 && item.month <= 12 ? item.month : currentMonth,
+          year: item.year != null && item.year >= 1900 && item.year <= 2100 ? item.year : currentYear,
+        });
+        inserted++;
+      } catch (err) {
+        errors.push(`"${name}": ${err.message || 'Insert failed'}`);
+      }
+    }
+
+    if (inserted > 0) {
+      await loadManagementList();
+    }
+
+    if (errors.length > 0 && inserted === 0) {
+      setBulkInsertStatus({
+        type: 'error',
+        message: errors.slice(0, 5).join('; ') + (errors.length > 5 ? ` ... +${errors.length - 5} more` : ''),
+      });
+    } else if (errors.length > 0) {
+      setBulkInsertStatus({
+        type: 'success',
+        message: `Inserted ${inserted} vocabulary. ${errors.length} failed: ${errors.slice(0, 2).join('; ')}${errors.length > 2 ? '...' : ''}`,
+      });
+    } else {
+      setBulkInsertStatus({ type: 'success', message: `Successfully inserted ${inserted} vocabulary entries!` });
+    }
+  }, [loadManagementList]);
+
+  const handleBulkInsertFile = useCallback(async () => {
+    setBulkInsertStatus(null);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/json', 'text/plain'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) return;
+
+      const asset = result.assets[0];
+      if (!asset) {
+        setBulkInsertStatus({ type: 'error', message: 'Could not read file.' });
+        return;
+      }
+
+      setIsBulkInserting(true);
+      const file = new File(asset);
+      const content = await file.text();
+      await processBulkInsertContent(content);
+    } catch (err) {
+      setBulkInsertStatus({ type: 'error', message: err.message || 'Failed to process file.' });
+    } finally {
+      setIsBulkInserting(false);
+    }
+  }, [processBulkInsertContent]);
+
+  const handleBulkInsertPaste = useCallback(async () => {
+    setBulkInsertStatus(null);
+    const trimmed = pastedJson?.trim();
+    if (!trimmed) {
+      setBulkInsertStatus({ type: 'error', message: 'Paste JSON first.' });
+      return;
+    }
+    setIsBulkInserting(true);
+    try {
+      await processBulkInsertContent(trimmed);
+      setPastedJson('');
+    } finally {
+      setIsBulkInserting(false);
+    }
+  }, [pastedJson, processBulkInsertContent]);
 
   const handleLoadFlashcards = useCallback(async () => {
     setPracticeStatus(null);
@@ -863,24 +982,32 @@ export default function App() {
         <View style={styles.buyMeCoffeeRow}>
           <Text style={[styles.buyMeCoffeeValue, { color: colors.text, flex: 1 }]}>{NAGAD_NUMBER}</Text>
           <TouchableOpacity
-            style={[styles.copyButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            style={[styles.copyButton, { backgroundColor: 'transparent' }]}
             onPress={handleCopyNumber}
             activeOpacity={0.8}
           >
-            <Text style={styles.copyButtonText}>{copiedNumber ? '✓ Copied!' : 'Copy'}</Text>
+            <MaterialIcons
+              name={copiedNumber ? 'check' : 'content-copy'}
+              size={20}
+              color={colors.primary}
+            />
           </TouchableOpacity>
         </View>
       </View>
       <View style={[styles.buyMeCoffeeField, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder }]}>
         <Text style={[styles.buyMeCoffeeLabel, { color: colors.textMuted }]}>Gmail</Text>
         <View style={styles.buyMeCoffeeRow}>
-          <Text style={[styles.buyMeCoffeeValue, { color: colors.text, flex: 1, fontSize: 15 }]}>{GMAIL_EMAIL}</Text>
+          <Text style={[styles.buyMeCoffeeValue, { color: colors.text, flex: 1 }]}>{GMAIL_EMAIL}</Text>
           <TouchableOpacity
-            style={[styles.copyButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+            style={[styles.copyButton, { backgroundColor: 'transparent' }]}
             onPress={handleCopyEmail}
             activeOpacity={0.8}
           >
-            <Text style={styles.copyButtonText}>{copiedEmail ? '✓ Copied!' : 'Copy'}</Text>
+            <MaterialIcons
+              name={copiedEmail ? 'check' : 'content-copy'}
+              size={20}
+              color={colors.primary}
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -893,7 +1020,7 @@ export default function App() {
     </View>
   );
 
-  const renderBackButton = () => (
+  const renderBackButton = (toView = 'home', label = 'Home') => (
     <TouchableOpacity
       style={{
         flexDirection: 'row',
@@ -908,18 +1035,39 @@ export default function App() {
         borderWidth: 1,
         borderColor: colors.backButtonBorder,
       }}
-      onPress={() => setActiveView('home')}
+      onPress={() => setActiveView(toView)}
       activeOpacity={0.7}
     >
       <Text style={{ fontSize: 20, color: colors.primary }}>←</Text>
-      <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 16 }}>Home</Text>
+      <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 16 }}>{label}</Text>
     </TouchableOpacity>
   );
 
   const renderAddSection = () => {
     const cardContent = (
       <View>
-        {renderBackButton()}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
+          {renderBackButton('home', 'Home')}
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+              paddingVertical: 10,
+              paddingHorizontal: 14,
+              marginBottom: 16,
+              borderRadius: 12,
+              backgroundColor: colors.primary,
+              borderWidth: 1,
+              borderColor: colors.primary,
+            }}
+            onPress={() => setActiveView('bulkInsert')}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="upload-file" size={18} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>Bulk Insert</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Add Vocabulary</Text>
         {isEditing && (
           <View style={[styles.editBanner, { backgroundColor: colors.quoteBg }]}>
@@ -1607,6 +1755,89 @@ export default function App() {
     </View>
   );
 
+  const renderBulkInsertSection = () => (
+    <View style={{ paddingHorizontal: 8 }}>
+      {renderBackButton('add', 'Add Vocabulary')}
+      <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 8 }]}>Bulk Insert</Text>
+      <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: 14, marginBottom: 8, fontStyle: 'normal' }]}>
+        Upload a .json file or paste JSON. Supports Bangla, English & Unicode.
+      </Text>
+      <Text style={[styles.subtitle, { color: colors.textMuted, fontSize: 13, marginBottom: 12, fontStyle: 'normal' }]}>
+        Example: [{'{"name": "Love", "meaning": "প্রেম"}'}]
+      </Text>
+
+      <TouchableOpacity
+        style={[
+          styles.button,
+          { backgroundColor: colors.primary, marginBottom: 20 },
+          isBulkInserting && styles.disabledButton,
+        ]}
+        onPress={handleBulkInsertFile}
+        disabled={isBulkInserting}
+      >
+        {isBulkInserting ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <MaterialIcons name="upload-file" size={22} color="#fff" />
+            <Text style={styles.buttonText}>Upload .json file</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Or paste JSON directly</Text>
+      <TextInput
+        style={[
+          styles.input,
+          styles.textarea,
+          {
+            backgroundColor: colors.inputBg,
+            borderColor: colors.inputBorder,
+            color: colors.text,
+            minHeight: 140,
+            textAlignVertical: 'top',
+          },
+        ]}
+        placeholder='[{"name": "Love", "meaning": "প্রেম"}]'
+        placeholderTextColor={colors.textMuted}
+        multiline
+        value={pastedJson}
+        onChangeText={setPastedJson}
+        editable={!isBulkInserting}
+      />
+      <TouchableOpacity
+        style={[
+          styles.button,
+          { backgroundColor: colors.primary, marginTop: 12 },
+          isBulkInserting && styles.disabledButton,
+        ]}
+        onPress={handleBulkInsertPaste}
+        disabled={isBulkInserting}
+      >
+        {isBulkInserting ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <MaterialIcons name="content-paste" size={22} color="#fff" />
+            <Text style={styles.buttonText}>Insert from paste</Text>
+          </View>
+        )}
+      </TouchableOpacity>
+
+      {bulkInsertStatus && (
+        <Text
+          style={[
+            styles.feedback,
+            { marginTop: 16 },
+            bulkInsertStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
+          ]}
+        >
+          {bulkInsertStatus.message}
+        </Text>
+      )}
+    </View>
+  );
+
   const commonHeader = null;
 
   if (activeView === 'home') {
@@ -1638,6 +1869,28 @@ export default function App() {
           {renderBackButton()}
           {renderBuyMeACoffeeSection()}
         </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  if (activeView === 'bulkInsert') {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background, flex: 1 }]}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        >
+          <ScrollView
+            contentContainerStyle={[styles.container, { backgroundColor: colors.background, flexGrow: 1, paddingBottom: 40 }]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            showsVerticalScrollIndicator={true}
+          >
+            {renderBulkInsertSection()}
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -2086,15 +2339,10 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   copyButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  copyButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   buyMeCoffeeAppreciation: {
     fontSize: 16,

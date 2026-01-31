@@ -32,6 +32,10 @@ export const initDatabase = async () => {
       // Column already exists, ignore
     }
 
+    // Seed on first load (when table is empty)
+    const { seedDatabase } = await import('./seed');
+    await seedDatabase();
+
     console.log('Database initialized successfully');
     return db;
   } catch (error) {

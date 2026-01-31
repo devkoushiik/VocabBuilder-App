@@ -86,17 +86,19 @@ const ModalPicker = ({
           >
             <ScrollView
               style={{ maxHeight: 360 }}
-              contentContainerStyle={{ paddingBottom: 8 }}
+              contentContainerStyle={{ paddingVertical: 12 }}
               showsVerticalScrollIndicator={true}
             >
-              <View style={{ paddingVertical: 8 }}>
-                {normalizedItems.map((item) => (
+              {normalizedItems.map((item) => (
                 <TouchableOpacity
                   key={String(item.value)}
                   onPress={() => handleSelect(item.value)}
                   style={{
                     paddingVertical: 14,
-                    paddingHorizontal: 8,
+                    paddingHorizontal: 20,
+                    marginHorizontal: 8,
+                    marginVertical: 2,
+                    borderRadius: 8,
                     backgroundColor:
                       String(selectedValue) === String(item.value)
                         ? theme === 'dark'
@@ -117,7 +119,6 @@ const ModalPicker = ({
                   </Text>
                 </TouchableOpacity>
               ))}
-              </View>
             </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>

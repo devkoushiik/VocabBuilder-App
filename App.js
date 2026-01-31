@@ -22,6 +22,7 @@ import ModalPicker from './src/components/ModalPicker';
 import GradientBorder from './src/components/GradientBorder';
 import VocabItem from './src/components/VocabItem';
 import { initDatabase } from './src/db/database';
+import { seedDatabase } from './src/db/seed';
 import {
   addVocabulary,
   getVocabulary,
@@ -211,7 +212,21 @@ export default function App() {
     }).start();
   }, [showManagementFilters]);
 
+  const practiceArrowAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(practiceArrowAnim, {
+      toValue: showPracticeFilters ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [showPracticeFilters]);
+
   const arrowRotation = arrowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '180deg'],
+  });
+
+  const practiceArrowRotation = practiceArrowAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ['0deg', '180deg'],
   });
@@ -221,7 +236,7 @@ export default function App() {
   // Get current theme colors
   const colors = useMemo(() => theme === 'dark' ? darkTheme : lightTheme, [theme]);
 
-  // Initialize database on app start
+  // Initialize database and seed on app start
   useEffect(() => {
     const initDB = async () => {
       try {
@@ -281,16 +296,17 @@ export default function App() {
     if (activeView === 'practice') {
       if (!hasAutoLoadedRef.current) {
         hasAutoLoadedRef.current = true;
-        // Load available years for practice filter
-        getAvailableYears().then((years) => {
-          const yearsSet = new Set(years.map(String));
-          yearsSet.add(CURRENT_YEAR);
-          setAvailableYears(Array.from(yearsSet).sort((a, b) => Number(b) - Number(a)));
-        });
-        // Auto-load after a short delay to ensure view is ready
-        const timer = setTimeout(() => {
+        // Run seed on practice page load (adds missing sample vocab)
+        const runSeedAndLoad = async () => {
+          await seedDatabase();
+          getAvailableYears().then((years) => {
+            const yearsSet = new Set(years.map(String));
+            yearsSet.add(CURRENT_YEAR);
+            setAvailableYears(Array.from(yearsSet).sort((a, b) => Number(b) - Number(a)));
+          });
           handleLoadFlashcards();
-        }, 300);
+        };
+        const timer = setTimeout(runSeedAndLoad, 100);
         return () => clearTimeout(timer);
       }
     } else {
@@ -1132,215 +1148,158 @@ export default function App() {
     </View>
   );
 
-  const renderPracticeSection = () => {
-    const cardContent = (
-      <View style={{ backgroundColor: colors.card, borderRadius: 12, padding: 0, overflow: 'hidden' }}>
-        <View style={{ paddingTop: 20, paddingBottom: 0, paddingHorizontal: 8, width: '100%' }}>
-          <View style={{ marginBottom: 12 }}>
-            {renderBackButton()}
-            <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
-          </View>
-          {allFlashcards.length > 0 && (
-          <View style={{ width: '100%', marginBottom: 16 }}>
-            <TouchableOpacity
-              style={[styles.filterToggle, { backgroundColor: colors.filterToggleBg }]}
-              onPress={() => setShowPracticeFilters((prev) => !prev)}
-            >
-              <Text style={[styles.filterToggleText, { color: colors.filterToggleText }]}>
-                {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
-              </Text>
-            </TouchableOpacity>
+  const renderPracticeSection = () => (
+    <View style={{ paddingHorizontal: 8 }}>
+      {renderBackButton()}
+      <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
 
-            {showPracticeFilters && (
-              <View
-                style={[
-                  styles.practiceFilters,
-                  {
-                    backgroundColor: colors.filterBg,
-                    borderColor: colors.border,
-                    borderRadius: 12,
-                    marginHorizontal: 0,
-                  },
-                ]}
-              >
-                <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-                <View style={{ marginBottom: 12 }}>
-                  <ModalPicker
-                    selectedValue={filters.sortType}
-                    onValueChange={(value) => handleFilterChange('sortType', value)}
-                    items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
-                    placeholder="A - Z (All)"
-                    colors={colors}
-                    theme={theme}
-                    containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                  />
-                </View>
+      {allFlashcards.length > 0 && (
+      <View style={{ marginTop: 12, marginBottom: 12 }}>
+        <View style={[styles.filterGroup, { backgroundColor: colors.filterBg, borderColor: colors.border, borderRadius: 12, padding: 0, marginTop: 0 }]}>
+          <TouchableOpacity
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8 }}
+            onPress={() => setShowPracticeFilters((prev) => !prev)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.listTitle, { fontSize: 16, color: colors.text, paddingRight: 0 }]}>
+              {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
+            </Text>
+            <Animated.Text style={{ color: colors.filterToggleText, fontSize: 16, fontWeight: 'bold', transform: [{ rotate: practiceArrowRotation }] }}>
+              ▼
+            </Animated.Text>
+          </TouchableOpacity>
 
-                <View style={styles.row}>
-                  <View style={styles.half}>
-                    <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                    <View style={{ marginBottom: 12 }}>
-                      <ModalPicker
-                        selectedValue={filters.month}
-                        onValueChange={(value) => handleFilterChange('month', value)}
-                        items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
-                        placeholder="Any"
-                        colors={colors}
-                        theme={theme}
-                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.half}>
-                    <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                    <View style={{ marginBottom: 12 }}>
-                      <ModalPicker
-                        selectedValue={filters.year}
-                        onValueChange={(value) => handleFilterChange('year', value)}
-                        items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
-                        placeholder="Any"
-                        colors={colors}
-                        theme={theme}
-                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                      />
-                    </View>
+          {showPracticeFilters && (
+            <View style={{ padding: 10, paddingTop: 0 }}>
+              <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
+              <View style={{ marginBottom: 8 }}>
+                <ModalPicker
+                  selectedValue={filters.sortType}
+                  onValueChange={(value) => handleFilterChange('sortType', value)}
+                  items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
+                  placeholder="A - Z (All)"
+                  colors={colors}
+                  theme={theme}
+                  containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                />
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.half}>
+                  <Text style={[styles.label, { color: colors.text }]}>Month</Text>
+                  <View style={{ marginBottom: 8 }}>
+                    <ModalPicker
+                      selectedValue={filters.month}
+                      onValueChange={(value) => handleFilterChange('month', value)}
+                      items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
+                      placeholder="Any"
+                      colors={colors}
+                      theme={theme}
+                      containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                    />
                   </View>
                 </View>
-              </View>
-            )}
-
-            <View style={{ width: '100%', marginTop: 4, marginBottom: 16 }}>
-              <View style={{ marginBottom: 12 }}>
-                <Text style={[styles.label, { color: colors.text }]}>Range (cards per session)</Text>
-              </View>
-              <View style={styles.rangeRow}>
-            {[5, 10, 15].map((value) => (
-              <TouchableOpacity
-                key={`range-${value}`}
-                style={[
-                  styles.rangeButton,
-                  { borderColor: colors.rangeButtonBorder },
-                  filters.limit === String(value) && {
-                    backgroundColor: colors.rangeButtonActiveBg,
-                    borderColor: colors.rangeButtonActiveBorder,
-                  },
-                  isLoadingCards && styles.disabledButton,
-                ]}
-                onPress={() => handleQuickRange(value)}
-                disabled={isLoadingCards}
-              >
-                {isLoadingCards && filters.limit === String(value) ? (
-                  <ActivityIndicator color={colors.rangeButtonActiveText} size="small" />
-                ) : (
-                  <Text
-                    style={[
-                      styles.rangeButtonText,
-                      { color: colors.rangeButtonText },
-                      filters.limit === String(value) && { color: colors.rangeButtonActiveText },
-                    ]}
-                  >
-                    {value} cards
-                  </Text>
-                )}
-              </TouchableOpacity>
-            ))}
+                <View style={styles.half}>
+                  <Text style={[styles.label, { color: colors.text }]}>Year</Text>
+                  <View style={{ marginBottom: 8 }}>
+                    <ModalPicker
+                      selectedValue={filters.year}
+                      onValueChange={(value) => handleFilterChange('year', value)}
+                      items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
+                      placeholder="Any"
+                      colors={colors}
+                      theme={theme}
+                      containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                    />
+                  </View>
+                </View>
               </View>
             </View>
-
-            {practiceStatus && (
-              <View style={{ marginTop: 8 }}>
-              <Text
-                style={[
-                  styles.feedback,
-                  practiceStatus.type === 'error'
-                    ? { color: colors.error }
-                    : { color: colors.success },
-                ]}
-              >
-                {practiceStatus.message}
-              </Text>
-              </View>
-            )}
-          </View>
           )}
         </View>
+      </View>
+      )}
 
-        {isLoadingCards ? (
-          <View style={[styles.loadingContainer, { paddingHorizontal: 8 }]}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.text }]}>Loading flashcards...</Text>
-          </View>
-        ) : allFlashcards.length > 0 ? (
-          <View style={styles.practiceArea}>
-            <View style={styles.flashcardGrid}>
-              {currentPageFlashcards.map((card, idx) => (
-                <View
-                  key={card.id || `${card.name}-${card.year}-${idx}`}
-                  style={styles.flashcardWrapper}
-                >
-                  <Flashcard
-                    card={card}
-                    theme={colors}
-                    themeMode={theme}
-                    showMarkDone
-                    onMarkDone={handleMarkDone}
-                    entranceDelay={idx * 80}
-                  />
-                </View>
-              ))}
-            </View>
-            <View style={{ paddingHorizontal: 8, paddingTop: 16, paddingBottom: 8, width: '100%' }}>
-              <Text style={[styles.meta, { color: colors.textMuted }]}>
-                Showing {currentPageFlashcards.length} of {allFlashcards.length} cards
-                {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
-              </Text>
-              {totalPages > 1 && (
-                <View style={styles.practiceNav}>
-                  <TouchableOpacity
-                    style={[
-                      styles.practiceNavButton,
-                      { backgroundColor: colors.practiceNavPrevBg },
-                      (currentCardIndex === 0 || isLoadingCards) && styles.disabledButton,
-                    ]}
-                    onPress={handlePrevPage}
-                    disabled={currentCardIndex === 0 || isLoadingCards}
-                  >
-                    <Text style={[styles.practiceNavText, { color: colors.practiceNavText }]}>Previous</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.practiceNavButton,
-                      { backgroundColor: colors.practiceNavNextBg },
-                      (currentCardIndex >= totalPages - 1 || isLoadingCards) &&
-                      styles.disabledButton,
-                    ]}
-                    onPress={handleNextPage}
-                    disabled={currentCardIndex >= totalPages - 1 || isLoadingCards}
-                  >
-                    <Text style={[styles.practiceNavText, { color: colors.practiceNavText }]}>Next</Text>
-                  </TouchableOpacity>
-                </View>
+      <View style={{ marginTop: 12, marginBottom: 12, paddingVertical: 12, paddingHorizontal: 8 }}>
+        <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Range (cards per session)</Text>
+        <View style={styles.rangeRow}>
+          {[5, 10, 15].map((value) => (
+            <TouchableOpacity
+              key={`range-${value}`}
+              style={[
+                styles.rangeButton,
+                { borderColor: colors.rangeButtonBorder },
+                filters.limit === String(value) && { backgroundColor: colors.rangeButtonActiveBg, borderColor: colors.rangeButtonActiveBorder },
+                isLoadingCards && styles.disabledButton,
+              ]}
+              onPress={() => handleQuickRange(value)}
+              disabled={isLoadingCards}
+            >
+              {isLoadingCards && filters.limit === String(value) ? (
+                <ActivityIndicator color={colors.rangeButtonActiveText} size="small" />
+              ) : (
+                <Text style={[styles.rangeButtonText, { color: colors.rangeButtonText }, filters.limit === String(value) && { color: colors.rangeButtonActiveText }]}>
+                  {value} cards
+                </Text>
               )}
-            </View>
-          </View>
-        ) : (
-          <View style={[styles.emptyStateContainer, { paddingHorizontal: 8 }]}>
-            <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-              No flashcards available. Add vocabulary to get started.
-            </Text>
-          </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {practiceStatus && (
+          <Text style={[styles.feedback, { marginTop: 8 }, practiceStatus.type === 'error' ? { color: colors.error } : { color: colors.success }]}>
+            {practiceStatus.message}
+          </Text>
         )}
       </View>
-    );
 
-    // Same wrapper for both modes: padding 0, spacing identical.
-    const wrapperStyle = {
-      borderRadius: 12,
-      overflow: 'hidden',
-      backgroundColor: colors.card,
-    };
-    return <View style={wrapperStyle}>{cardContent}</View>;
-  };
+      {isLoadingCards ? (
+        <View style={[styles.loadingContainer, { paddingHorizontal: 8 }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.text }]}>Loading flashcards...</Text>
+        </View>
+      ) : allFlashcards.length > 0 ? (
+        <View style={styles.practiceArea}>
+          <View style={styles.flashcardGrid}>
+            {currentPageFlashcards.map((card, idx) => (
+              <View key={card.id || `${card.name}-${card.year}-${idx}`} style={styles.flashcardWrapper}>
+                <Flashcard card={card} theme={colors} themeMode={theme} showMarkDone onMarkDone={handleMarkDone} entranceDelay={idx * 80} />
+              </View>
+            ))}
+          </View>
+          <View style={{ paddingHorizontal: 8, paddingTop: 16, paddingBottom: 8, width: '100%' }}>
+            <Text style={[styles.meta, { color: colors.textMuted }]}>
+              Showing {currentPageFlashcards.length} of {allFlashcards.length} cards
+              {totalPages > 1 && ` • Page ${currentPage} of ${totalPages}`}
+            </Text>
+            {totalPages > 1 && (
+              <View style={styles.practiceNav}>
+                <TouchableOpacity
+                  style={[styles.practiceNavButton, { backgroundColor: colors.practiceNavPrevBg }, (currentCardIndex === 0 || isLoadingCards) && styles.disabledButton]}
+                  onPress={handlePrevPage}
+                  disabled={currentCardIndex === 0 || isLoadingCards}
+                >
+                  <Text style={[styles.practiceNavText, { color: colors.practiceNavText }]}>Previous</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.practiceNavButton, { backgroundColor: colors.practiceNavNextBg }, (currentCardIndex >= totalPages - 1 || isLoadingCards) && styles.disabledButton]}
+                  onPress={handleNextPage}
+                  disabled={currentCardIndex >= totalPages - 1 || isLoadingCards}
+                >
+                  <Text style={[styles.practiceNavText, { color: colors.practiceNavText }]}>Next</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      ) : (
+        <View style={[styles.emptyStateContainer, { paddingHorizontal: 8 }]}>
+          <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
+            No flashcards available. Add vocabulary to get started.
+          </Text>
+        </View>
+      )}
+    </View>
+  );
 
   const renderDoneListSection = () => {
     const formatMonthLabel = (value) => {
@@ -1662,7 +1621,8 @@ export default function App() {
               onPress={() => setActiveView('buyMeACoffee')}
               activeOpacity={0.8}
             >
-              <Text style={[styles.buyMeCoffeeLinkText, { color: colors.primaryLighter }]}>☕ Buy me a coffee</Text>
+              <MaterialIcons name="local-cafe" size={20} color="#D4A84B" />
+              <Text style={[styles.buyMeCoffeeLinkText, { color: colors.primaryLighter }]}>Buy me a coffee</Text>
             </TouchableOpacity>
           </Animated.View>
         </View>
@@ -1940,7 +1900,6 @@ const styles = StyleSheet.create({
   rangeRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 16,
   },
   rangeButton: {
     flex: 1,
@@ -1948,7 +1907,9 @@ const styles = StyleSheet.create({
     borderColor: '#94a3b8',
     borderRadius: 14,
     paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   rangeButtonActive: {
     backgroundColor: '#1d4ed8',
@@ -2040,16 +2001,17 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   heroButtons: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     gap: 12,
-    flexWrap: 'wrap',
     marginTop: 16,
+    width: '100%',
   },
   primaryCta: {
-    backgroundColor: '#3b82f6',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    borderRadius: 999,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#3b82f6',
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -2064,11 +2026,11 @@ const styles = StyleSheet.create({
   },
   secondaryCta: {
     borderWidth: 2,
-    borderColor: '#fff',
-    paddingVertical: 14,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   secondaryCtaText: {
     color: '#fff',
@@ -2077,15 +2039,19 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   buyMeCoffeeLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     alignSelf: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    gap: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
     marginBottom: 24,
     borderWidth: 1,
     borderRadius: 999,
   },
   buyMeCoffeeLinkText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
   },
   buyMeCoffeeCard: {

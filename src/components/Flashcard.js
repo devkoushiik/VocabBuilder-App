@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Text, TouchableOpacity, View } from 'react-native';
 import { Audio } from 'expo-av';
 
 const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone, entranceDelay = 0 }) => {
@@ -63,45 +63,41 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone,
     });
   };
 
-  // Use theme colors if provided
   const colors = theme || {};
   const cardStyles = {
     card: {
       backgroundColor: colors.flashcardBg || '#eff6ff',
-      borderRadius: 12,
+      borderRadius: 16,
       padding: 24,
-      paddingHorizontal: 8,
-      minHeight: 200,
+      minHeight: 220,
       width: '100%',
-      justifyContent: 'space-between',
-      shadowColor: colors.primary || '#3b82f6',
-      shadowOpacity: 0.2,
-      shadowRadius: 12,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 6,
       borderWidth: 1,
       borderColor: colors.flashcardBorder || '#dbeafe',
-      marginBottom: 0,
+      overflow: 'hidden',
     },
     label: {
-      fontSize: 14,
+      fontSize: 11,
       color: colors.flashcardLabel || colors.primary || '#1e40af',
-      marginBottom: 12,
-      letterSpacing: 1.2,
+      marginBottom: 8,
+      letterSpacing: 1.5,
       textTransform: 'uppercase',
-      fontWeight: '600',
+      fontWeight: '700',
     },
     value: {
-      fontSize: 18,
-      fontWeight: '700',
+      fontSize: 20,
+      fontWeight: '600',
       color: colors.flashcardValue || colors.text || '#1e3a8a',
-      lineHeight: 24,
+      lineHeight: 28,
     },
     hint: {
       fontSize: 12,
-      color: colors.flashcardHint || colors.primary || '#3b82f6',
-      alignSelf: 'flex-end',
+      color: colors.textMuted || '#94a3b8',
       fontWeight: '500',
+      textAlign: 'center',
+      marginTop: 16,
+      paddingTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: themeMode === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
     },
   };
 
@@ -162,7 +158,7 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone,
               zIndex: 10,
               width: 28,
               height: 28,
-              borderRadius: 6,
+              borderRadius: 8,
               backgroundColor: colors.success || '#16a34a',
               alignItems: 'center',
               justifyContent: 'center',
@@ -173,7 +169,8 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone,
             <Text style={{ fontSize: 14, color: '#fff', fontWeight: '700' }}>✓</Text>
           </TouchableOpacity>
         )}
-        <View style={{ flex: 1, position: 'relative' }}>
+
+        <View style={{ flex: 1, position: 'relative', minHeight: 140 }}>
           <Animated.View
             style={{
               position: 'absolute',
@@ -197,49 +194,11 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone,
             <Text style={cardStyles.value}>{card.name}</Text>
           </Animated.View>
         </View>
+
         <Text style={cardStyles.hint}>Tap to flip</Text>
       </Animated.View>
     </TouchableOpacity>
   );
 };
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#eff6ff',
-    borderRadius: 12,
-    padding: 24,
-    paddingHorizontal: 8,
-    minHeight: 200,
-    justifyContent: 'space-between',
-    shadowColor: '#3b82f6',
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
-    borderWidth: 1,
-    borderColor: '#dbeafe',
-  },
-  label: {
-    fontSize: 14,
-    color: '#1e40af',
-    marginBottom: 12,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-    fontWeight: '600',
-  },
-  value: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#1e3a8a',
-    lineHeight: 24,
-  },
-  hint: {
-    fontSize: 12,
-    color: '#3b82f6',
-    alignSelf: 'flex-end',
-    fontWeight: '500',
-  },
-});
-
 export default Flashcard;
-

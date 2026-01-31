@@ -16,8 +16,6 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Picker } from '@react-native-picker/picker';
-
 import Flashcard from './src/components/Flashcard';
 import ModalPicker from './src/components/ModalPicker';
 import GradientBorder from './src/components/GradientBorder';
@@ -60,8 +58,8 @@ const MONTHS = [
   { label: 'December', value: '12' },
 ];
 
-// Months up to and including current month (for practice filter)
-const getAvailableMonthsForPractice = () => {
+// Months up to and including current month (for all filter routes)
+const getAvailableMonths = () => {
   const currentMonthNum = new Date().getMonth() + 1; // 1-12
   return MONTHS.filter((m) => Number(m.value) <= currentMonthNum);
 };
@@ -1003,42 +1001,30 @@ export default function App() {
                 <View style={styles.row}>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Sort</Text>
-                    <View style={[styles.pickerContainer, { borderColor: colors.border }, theme === 'dark' && { backgroundColor: colors.inputBg }]}>
-                      <Picker
+                    <View style={{ marginBottom: 12 }}>
+                      <ModalPicker
                         selectedValue={managementFilters.sortType}
                         onValueChange={(value) => handleManagementFilterChange('sortType', value)}
-                        style={[{ color: colors.text }, theme === 'dark' && { backgroundColor: colors.inputBg }]}
-                      >
-                        <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
-                        {SORT_OPTIONS.map((option) => (
-                          <Picker.Item
-                            key={`manage-sort-${option}`}
-                            label={option}
-                            value={option}
-                            color={theme === 'dark' ? colors.text : undefined}
-                          />
-                        ))}
-                      </Picker>
+                        items={[{ label: 'All', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
+                        placeholder="All"
+                        colors={colors}
+                        theme={theme}
+                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                      />
                     </View>
                   </View>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                    <View style={[styles.pickerContainer, { borderColor: colors.border }, theme === 'dark' && { backgroundColor: colors.inputBg }]}>
-                      <Picker
+                    <View style={{ marginBottom: 12 }}>
+                      <ModalPicker
                         selectedValue={managementFilters.month}
                         onValueChange={(value) => handleManagementFilterChange('month', value)}
-                        style={[{ color: colors.text }, theme === 'dark' && { backgroundColor: colors.inputBg }]}
-                      >
-                        <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
-                        {MONTHS.map((month) => (
-                          <Picker.Item
-                            key={`manage-month-${month.value}`}
-                            label={month.label}
-                            value={month.value}
-                            color={theme === 'dark' ? colors.text : undefined}
-                          />
-                        ))}
-                      </Picker>
+                        items={[{ label: 'All', value: '' }, ...getAvailableMonths()]}
+                        placeholder="All"
+                        colors={colors}
+                        theme={theme}
+                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                      />
                     </View>
                   </View>
                 </View>
@@ -1046,22 +1032,16 @@ export default function App() {
                 <View style={styles.row}>
                   <View style={styles.half}>
                     <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                    <View style={[styles.pickerContainer, { borderColor: colors.border }, theme === 'dark' && { backgroundColor: colors.inputBg }]}>
-                      <Picker
+                    <View style={{ marginBottom: 12 }}>
+                      <ModalPicker
                         selectedValue={managementFilters.year}
                         onValueChange={(value) => handleManagementFilterChange('year', value)}
-                        style={[{ color: colors.text }, theme === 'dark' && { backgroundColor: colors.inputBg }]}
-                      >
-                        <Picker.Item label="All" value="" color={theme === 'dark' ? colors.text : undefined} />
-                        {availableYears.map((year) => (
-                          <Picker.Item
-                            key={`manage-year-${year}`}
-                            label={year}
-                            value={year}
-                            color={theme === 'dark' ? colors.text : undefined}
-                          />
-                        ))}
-                      </Picker>
+                        items={[{ label: 'All', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
+                        placeholder="All"
+                        colors={colors}
+                        theme={theme}
+                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                      />
                     </View>
                   </View>
                 </View>
@@ -1164,7 +1144,7 @@ export default function App() {
                       <ModalPicker
                         selectedValue={filters.month}
                         onValueChange={(value) => handleFilterChange('month', value)}
-                        items={[{ label: 'Any', value: '' }, ...getAvailableMonthsForPractice()]}
+                        items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
                         placeholder="Any"
                         colors={colors}
                         theme={theme}

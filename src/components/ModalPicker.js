@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, TouchableOpacity, View, Text } from 'react-native';
+import { Modal, ScrollView, TouchableOpacity, View, Text } from 'react-native';
 
 /**
  * Modal-based picker for options. Fixes white dropdown modal in dark mode
@@ -84,8 +84,13 @@ const ModalPicker = ({
               overflow: 'hidden',
             }}
           >
-            <View style={{ paddingVertical: 8 }}>
-              {normalizedItems.map((item) => (
+            <ScrollView
+              style={{ maxHeight: 360 }}
+              contentContainerStyle={{ paddingBottom: 8 }}
+              showsVerticalScrollIndicator={true}
+            >
+              <View style={{ paddingVertical: 8 }}>
+                {normalizedItems.map((item) => (
                 <TouchableOpacity
                   key={String(item.value)}
                   onPress={() => handleSelect(item.value)}
@@ -112,7 +117,8 @@ const ModalPicker = ({
                   </Text>
                 </TouchableOpacity>
               ))}
-            </View>
+              </View>
+            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>

@@ -97,7 +97,7 @@ export const getVocabulary = async (params = {}) => {
         const dataQuery = `
       SELECT * FROM vocabulary 
       ${whereClause}
-      ORDER BY createdAt DESC
+      ORDER BY name ASC
       LIMIT ? OFFSET ?
     `;
 

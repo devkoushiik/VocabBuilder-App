@@ -121,7 +121,8 @@ const defaultManagementFilters = {
   month: '',
   year: '',
   search: '',
-  sortOrder: 'asc', // 'asc' | 'desc'
+  sortOrder: 'desc', // 'asc' | 'desc'
+  sortBy: 'createdAt', // 'name' | 'createdAt'
 };
 
 export default function App() {
@@ -285,6 +286,7 @@ export default function App() {
         limit: MANAGEMENT_LIMIT,
         page: managementFilters.page,
         sortOrder: managementFilters.sortOrder || 'asc',
+        sortBy: managementFilters.sortBy || 'name',
       });
       setManagementList(response.data);
       setManagementMeta(response.meta);
@@ -718,11 +720,20 @@ export default function App() {
   }, []);
 
   const handleManagementFilterChange = (key, value) => {
-    setManagementFilters((prev) => ({
-      ...prev,
-      [key]: value,
-      page: key === 'page' ? value : 1,
-    }));
+    setManagementFilters((prev) => {
+      // If we are setting sort properties directly, just use them
+      if (key === 'sortBy' || key === 'sortOrder') {
+        return { ...prev, [key]: value, page: 1 };
+      }
+
+      // Special handling for sort button group update
+      if (key === 'sortGroup') {
+        // value is { sortBy, sortOrder }
+        return { ...prev, ...value, page: 1 };
+      }
+
+      return { ...prev, [key]: value, page: key === 'page' ? value : 1 };
+    });
   };
 
   const handleManagementPageChange = (direction) => {
@@ -1257,58 +1268,84 @@ export default function App() {
 
   const renderVocabListHeader = () => (
     <View style={[styles.savedVocabSection, { backgroundColor: colors.filterBg, borderColor: colors.border }]}>
-      <View style={styles.savedVocabHeader}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
         <View style={styles.savedVocabTitleRow}>
           <MaterialIcons name="menu-book" size={22} color={colors.primary} style={{ marginRight: 8 }} />
           <Text style={[styles.savedVocabTitle, { color: colors.text }]}>Saved Vocabulary</Text>
         </View>
-        <View style={styles.savedVocabActions}>
-          <TouchableOpacity
-            style={[
-              styles.sortOrderButton,
-              { borderColor: theme === 'dark' ? colors.borderLight : colors.border, backgroundColor: managementFilters.sortOrder === 'asc' ? colors.primary : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : colors.backButtonBg) },
-            ]}
-            onPress={() => handleManagementFilterChange('sortOrder', 'asc')}
-            activeOpacity={0.6}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <MaterialIcons name="arrow-upward" size={18} color={managementFilters.sortOrder === 'asc' ? '#fff' : colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.sortOrderButton,
-              { borderColor: theme === 'dark' ? colors.borderLight : colors.border, backgroundColor: managementFilters.sortOrder === 'desc' ? colors.primary : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : colors.backButtonBg) },
-            ]}
-            onPress={() => handleManagementFilterChange('sortOrder', 'desc')}
-            activeOpacity={0.6}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <MaterialIcons name="arrow-downward" size={18} color={managementFilters.sortOrder === 'desc' ? '#fff' : colors.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.clearAllButton,
-              { borderColor: colors.clearAllButtonBorder, backgroundColor: colors.clearAllButtonBg },
-              (isDeletingAll || isLoadingList || !managementMeta?.grandTotal) && styles.disabledButton,
-            ]}
-            onPress={() => confirmDeleteAll()}
-            disabled={isDeletingAll || isLoadingList || !managementMeta?.grandTotal}
-            activeOpacity={0.6}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            {isDeletingAll ? (
-              <ActivityIndicator color={colors.error} size="small" />
-            ) : (
-              <MaterialIcons name="delete" size={20} color={colors.error} />
-            )}
-          </TouchableOpacity>
+        <View style={[styles.savedVocabTotalBadge, { backgroundColor: theme === 'dark' ? 'rgba(0,255,0,0.12)' : 'rgba(22,163,74,0.1)', borderColor: theme === 'dark' ? 'rgba(0,255,0,0.25)' : 'rgba(22,163,74,0.25)' }]}>
+          <MaterialIcons name="library-books" size={16} color={colors.success} />
+          <Text style={[styles.savedVocabTotalText, { color: colors.success }]}>
+            {managementMeta?.grandTotal || 0} word{(managementMeta?.grandTotal || 0) !== 1 ? 's' : ''}
+          </Text>
         </View>
       </View>
-      <View style={[styles.savedVocabTotalBadge, { backgroundColor: theme === 'dark' ? 'rgba(0,255,0,0.12)' : 'rgba(22,163,74,0.1)', borderColor: theme === 'dark' ? 'rgba(0,255,0,0.25)' : 'rgba(22,163,74,0.25)' }]}>
-        <MaterialIcons name="library-books" size={16} color={colors.success} />
-        <Text style={[styles.savedVocabTotalText, { color: colors.success }]}>
-          {managementMeta?.grandTotal || 0} word{(managementMeta?.grandTotal || 0) !== 1 ? 's' : ''}
-        </Text>
+
+      <View style={{ height: 12 }} />
+
+      <View style={[styles.savedVocabActions, { width: '100%', justifyContent: 'space-between' }]}>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <TouchableOpacity
+            style={[
+              styles.sortOrderButton,
+              {
+                borderColor: theme === 'dark' ? colors.borderLight : colors.border,
+                backgroundColor: (managementFilters.sortBy === 'name' && managementFilters.sortOrder === 'asc') ? colors.primary : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : colors.backButtonBg)
+              },
+            ]}
+            onPress={() => handleManagementFilterChange('sortGroup', { sortBy: 'name', sortOrder: 'asc' })}
+            activeOpacity={0.6}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="arrow-upward" size={18} color={(managementFilters.sortBy === 'name' && managementFilters.sortOrder === 'asc') ? '#fff' : colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.sortOrderButton,
+              {
+                borderColor: theme === 'dark' ? colors.borderLight : colors.border,
+                backgroundColor: (managementFilters.sortBy === 'name' && managementFilters.sortOrder === 'desc') ? colors.primary : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : colors.backButtonBg)
+              },
+            ]}
+            onPress={() => handleManagementFilterChange('sortGroup', { sortBy: 'name', sortOrder: 'desc' })}
+            activeOpacity={0.6}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="arrow-downward" size={18} color={(managementFilters.sortBy === 'name' && managementFilters.sortOrder === 'desc') ? '#fff' : colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.sortOrderButton,
+              {
+                borderColor: theme === 'dark' ? colors.borderLight : colors.border,
+                backgroundColor: managementFilters.sortBy === 'createdAt' ? colors.primary : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : colors.backButtonBg)
+              },
+            ]}
+            onPress={() => handleManagementFilterChange('sortGroup', { sortBy: 'createdAt', sortOrder: 'desc' })}
+            activeOpacity={0.6}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <MaterialIcons name="access-time" size={18} color={managementFilters.sortBy === 'createdAt' ? '#fff' : colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        <TouchableOpacity
+          style={[
+            styles.clearAllButton,
+            { borderColor: colors.clearAllButtonBorder, backgroundColor: colors.clearAllButtonBg },
+            (isDeletingAll || isLoadingList || !managementMeta?.grandTotal) && styles.disabledButton,
+          ]}
+          onPress={() => confirmDeleteAll()}
+          disabled={isDeletingAll || isLoadingList || !managementMeta?.grandTotal}
+          activeOpacity={0.6}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          {isDeletingAll ? (
+            <ActivityIndicator color={colors.error} size="small" />
+          ) : (
+            <MaterialIcons name="delete" size={20} color={colors.error} />
+          )}
+        </TouchableOpacity>
       </View>
     </View>
   );

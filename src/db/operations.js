@@ -42,6 +42,7 @@ export const getVocabulary = async (params = {}) => {
             excludeDoneList = false,
             doneListOnly = false,
             sortOrder = 'asc',
+            sortBy = 'name',
         } = params;
 
         // Build WHERE clause
@@ -96,10 +97,12 @@ export const getVocabulary = async (params = {}) => {
         // Get paginated data
         const offset = (page - 1) * limit;
         const orderDir = String(sortOrder).toLowerCase() === 'desc' ? 'DESC' : 'ASC';
+        const orderField = sortBy === 'createdAt' ? 'createdAt' : 'name';
+
         const dataQuery = `
       SELECT * FROM vocabulary 
       ${whereClause}
-      ORDER BY name ${orderDir}
+      ORDER BY ${orderField} ${orderDir}
       LIMIT ? OFFSET ?
     `;
 

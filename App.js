@@ -1318,72 +1318,72 @@ export default function App() {
       {renderBackButton()}
       <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
 
-      {allFlashcards.length > 0 && (
-        <View style={{ marginTop: 12, marginBottom: 12 }}>
-          <View style={[styles.filterGroup, { backgroundColor: colors.filterBg, borderColor: colors.border, borderRadius: 12, padding: 0, marginTop: 0 }]}>
-            <TouchableOpacity
-              style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8 }}
-              onPress={() => setShowPracticeFilters((prev) => !prev)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.listTitle, { fontSize: 16, color: colors.text, paddingRight: 0 }]}>
-                {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
-              </Text>
-              <Animated.Text style={{ color: colors.filterToggleText, fontSize: 16, fontWeight: 'bold', transform: [{ rotate: practiceArrowRotation }] }}>
-                ▼
-              </Animated.Text>
-            </TouchableOpacity>
 
-            {showPracticeFilters && (
-              <View style={{ padding: 10, paddingTop: 0 }}>
-                <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-                <View style={{ marginBottom: 8 }}>
-                  <ModalPicker
-                    selectedValue={filters.sortType}
-                    onValueChange={(value) => handleFilterChange('sortType', value)}
-                    items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
-                    placeholder="A - Z (All)"
-                    colors={colors}
-                    theme={theme}
-                    containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                  />
-                </View>
+      <View style={{ marginTop: 12, marginBottom: 12 }}>
+        <View style={[styles.filterGroup, { backgroundColor: colors.filterBg, borderColor: colors.border, borderRadius: 12, padding: 0, marginTop: 0 }]}>
+          <TouchableOpacity
+            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8 }}
+            onPress={() => setShowPracticeFilters((prev) => !prev)}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.listTitle, { fontSize: 16, color: colors.text, paddingRight: 0 }]}>
+              {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
+            </Text>
+            <Animated.Text style={{ color: colors.filterToggleText, fontSize: 16, fontWeight: 'bold', transform: [{ rotate: practiceArrowRotation }] }}>
+              ▼
+            </Animated.Text>
+          </TouchableOpacity>
 
-                <View style={styles.row}>
-                  <View style={styles.half}>
-                    <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                    <View style={{ marginBottom: 8 }}>
-                      <ModalPicker
-                        selectedValue={filters.month}
-                        onValueChange={(value) => handleFilterChange('month', value)}
-                        items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
-                        placeholder="Any"
-                        colors={colors}
-                        theme={theme}
-                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                      />
-                    </View>
+          {showPracticeFilters && (
+            <View style={{ padding: 10, paddingTop: 0 }}>
+              <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
+              <View style={{ marginBottom: 8 }}>
+                <ModalPicker
+                  selectedValue={filters.sortType}
+                  onValueChange={(value) => handleFilterChange('sortType', value)}
+                  items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
+                  placeholder="A - Z (All)"
+                  colors={colors}
+                  theme={theme}
+                  containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                />
+              </View>
+
+              <View style={styles.row}>
+                <View style={styles.half}>
+                  <Text style={[styles.label, { color: colors.text }]}>Month</Text>
+                  <View style={{ marginBottom: 8 }}>
+                    <ModalPicker
+                      selectedValue={filters.month}
+                      onValueChange={(value) => handleFilterChange('month', value)}
+                      items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
+                      placeholder="Any"
+                      colors={colors}
+                      theme={theme}
+                      containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                    />
                   </View>
-                  <View style={styles.half}>
-                    <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                    <View style={{ marginBottom: 8 }}>
-                      <ModalPicker
-                        selectedValue={filters.year}
-                        onValueChange={(value) => handleFilterChange('year', value)}
-                        items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
-                        placeholder="Any"
-                        colors={colors}
-                        theme={theme}
-                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                      />
-                    </View>
+                </View>
+                <View style={styles.half}>
+                  <Text style={[styles.label, { color: colors.text }]}>Year</Text>
+                  <View style={{ marginBottom: 8 }}>
+                    <ModalPicker
+                      selectedValue={filters.year}
+                      onValueChange={(value) => handleFilterChange('year', value)}
+                      items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
+                      placeholder="Any"
+                      colors={colors}
+                      theme={theme}
+                      containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                    />
                   </View>
                 </View>
               </View>
-            )}
-          </View>
+            </View>
+          )}
         </View>
-      )}
+      </View>
+
 
       <View style={{ marginTop: 12, marginBottom: 12, paddingVertical: 12, paddingHorizontal: 8 }}>
         <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Range (cards per session)</Text>
@@ -1459,7 +1459,7 @@ export default function App() {
       ) : (
         <View style={[styles.emptyStateContainer, { paddingHorizontal: 8 }]}>
           <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-            No flashcards available. Add vocabulary to get started.
+            No flashcards found.
           </Text>
         </View>
       )}

@@ -18,13 +18,14 @@ import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
+import { WebView } from 'react-native-webview';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Flashcard from './src/components/Flashcard';
 import ModalPicker from './src/components/ModalPicker';
 import GradientBorder from './src/components/GradientBorder';
 import VocabItem from './src/components/VocabItem';
 import { initDatabase } from './src/db/database';
-import { seedDatabase } from './src/db/seed';
+
 import {
   addVocabulary,
   getVocabulary,
@@ -161,6 +162,7 @@ export default function App() {
   const [pastedJson, setPastedJson] = useState('');
   const [copiedEmail, setCopiedEmail] = useState(false);
 
+
   const isEditing = Boolean(editingId);
 
   // Animation for filter arrow
@@ -247,7 +249,7 @@ export default function App() {
   // Get current theme colors
   const colors = useMemo(() => theme === 'dark' ? darkTheme : lightTheme, [theme]);
 
-  // Initialize database and seed on app start
+  // Initialize database on app start
   useEffect(() => {
     const initDB = async () => {
       try {
@@ -308,9 +310,7 @@ export default function App() {
     if (activeView === 'practice') {
       if (!hasAutoLoadedRef.current) {
         hasAutoLoadedRef.current = true;
-        // Run seed on practice page load (adds missing sample vocab)
-        const runSeedAndLoad = async () => {
-          await seedDatabase();
+        const loadPracticeData = async () => {
           getAvailableYears().then((years) => {
             const yearsSet = new Set(years.map(String));
             yearsSet.add(CURRENT_YEAR);
@@ -318,7 +318,7 @@ export default function App() {
           });
           handleLoadFlashcards();
         };
-        const timer = setTimeout(runSeedAndLoad, 100);
+        const timer = setTimeout(loadPracticeData, 100);
         return () => clearTimeout(timer);
       }
     } else {
@@ -518,6 +518,8 @@ export default function App() {
       setIsBulkInserting(false);
     }
   }, [pastedJson, processBulkInsertContent]);
+
+
 
   const handleLoadFlashcards = useCallback(async () => {
     setPracticeStatus(null);
@@ -953,6 +955,13 @@ export default function App() {
           activeOpacity={0.85}
         >
           <Text style={styles.secondaryCtaText}>Practice Flashcards</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.secondaryCta, { borderColor: '#fff', backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}
+          onPress={() => setActiveView('webImport')}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.secondaryCtaText}>🌐 Web Import</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.secondaryCta, { borderColor: '#fff', backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}
@@ -1945,6 +1954,57 @@ export default function App() {
             {renderBulkInsertSection()}
           </ScrollView>
         </KeyboardAvoidingView>
+      </SafeAreaView>
+    );
+  }
+
+  if (activeView === 'webImport') {
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background, flex: 1 }]}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          backgroundColor: colors.card,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          gap: 10,
+        }}>
+          <TouchableOpacity
+            onPress={() => setActiveView('home')}
+            activeOpacity={0.7}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              borderRadius: 8,
+              backgroundColor: colors.backButtonBg,
+              borderWidth: 1,
+              borderColor: colors.backButtonBorder,
+            }}
+          >
+            <Text style={{ fontSize: 18, color: colors.primary, marginRight: 4 }}>←</Text>
+            <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Home</Text>
+          </TouchableOpacity>
+          <MaterialIcons name="language" size={22} color={colors.primary} />
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, flex: 1 }} numberOfLines={1}>Web Import</Text>
+        </View>
+        <WebView
+          source={{ uri: 'https://vocab-drill-one.vercel.app/' }}
+          style={{ flex: 1 }}
+          startInLoadingState={true}
+          renderLoading={() => (
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={{ color: colors.textSecondary, marginTop: 12, fontSize: 14 }}>Loading Vocab Drill...</Text>
+            </View>
+          )}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+        />
       </SafeAreaView>
     );
   }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Animated, Text, TouchableOpacity, View } from 'react-native';
 import { Audio } from 'expo-av';
+import { MaterialIcons } from '@expo/vector-icons';
 
 const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone, entranceDelay = 0 }) => {
   const [showBack, setShowBack] = useState(false);
@@ -153,34 +154,37 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone,
           <TouchableOpacity
             style={{
               position: 'absolute',
-              top: 14,
-              right: 14,
+              top: 12,
+              right: 12,
               zIndex: 10,
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              backgroundColor: colors.success || '#16a34a',
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              backgroundColor: themeMode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+              borderWidth: 1.5,
+              borderColor: colors.success || '#16a34a',
               alignItems: 'center',
               justifyContent: 'center',
             }}
             onPress={handleMarkDone}
-            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           >
-            <Text style={{ fontSize: 14, color: '#fff', fontWeight: '700' }}>✓</Text>
+            <MaterialIcons name="check" size={20} color={colors.success || '#16a34a'} />
           </TouchableOpacity>
         )}
 
-        <View style={{ flex: 1, position: 'relative', minHeight: 140 }}>
+        <View style={{ flex: 1, position: 'relative', minHeight: 140, justifyContent: 'center', alignItems: 'center' }}>
           <Animated.View
             style={{
               position: 'absolute',
               width: '100%',
               backfaceVisibility: 'hidden',
               transform: [{ rotateY: frontInterpolate }],
+              alignItems: 'center',
             }}
           >
-            <Text style={cardStyles.label}>Meaning</Text>
-            <Text style={cardStyles.value}>{card.meaning}</Text>
+            <Text style={[cardStyles.label, { textAlign: 'center' }]}>Meaning</Text>
+            <Text style={[cardStyles.value, { textAlign: 'center' }]}>{card.meaning}</Text>
           </Animated.View>
           <Animated.View
             style={{
@@ -188,10 +192,11 @@ const Flashcard = ({ card, theme, themeMode = 'light', onMarkDone, showMarkDone,
               width: '100%',
               backfaceVisibility: 'hidden',
               transform: [{ rotateY: backInterpolate }],
+              alignItems: 'center',
             }}
           >
-            <Text style={cardStyles.label}>Vocabulary</Text>
-            <Text style={cardStyles.value}>{card.name}</Text>
+            <Text style={[cardStyles.label, { textAlign: 'center' }]}>Vocabulary</Text>
+            <Text style={[cardStyles.value, { textAlign: 'center' }]}>{card.name}</Text>
           </Animated.View>
         </View>
 

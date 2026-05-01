@@ -5,6 +5,8 @@ import {
   Animated,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -18,7 +20,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { File } from 'expo-file-system';
 import { MaterialIcons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
-import { WebView } from 'react-native-webview';
+
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Flashcard from './src/components/Flashcard';
 import ModalPicker from './src/components/ModalPicker';
@@ -72,7 +74,7 @@ const now = new Date();
 const CURRENT_MONTH = String(now.getMonth() + 1);
 const CURRENT_YEAR = String(now.getFullYear());
 
-const MANAGEMENT_LIMIT = 50;
+const MANAGEMENT_LIMIT = 10;
 
 const INSPIRATIONAL_QUOTES = [
   "Words are the currency of communication.",
@@ -129,6 +131,7 @@ const defaultManagementFilters = {
 export default function App() {
   const [theme, setTheme] = useState('light'); // 'light' or 'dark'
   const [activeView, setActiveView] = useState('home');
+  const [guideTab, setGuideTab] = useState('english');
   const [form, setForm] = useState(defaultForm);
   const [filters, setFilters] = useState(defaultFilters);
   const [allFlashcards, setAllFlashcards] = useState([]);
@@ -161,7 +164,13 @@ export default function App() {
   const [bulkInsertStatus, setBulkInsertStatus] = useState(null);
   const [pastedJson, setPastedJson] = useState('');
   const [copiedEmail, setCopiedEmail] = useState(false);
-
+  const [copiedBkash, setCopiedBkash] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState(defaultForm);
+  const [editFormStatus, setEditFormStatus] = useState(null);
+  const [isEditSaving, setIsEditSaving] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+  const splashFade = useRef(new Animated.Value(1)).current;
 
   const isEditing = Boolean(editingId);
 
@@ -182,6 +191,8 @@ export default function App() {
   const buttonsTranslateY = useRef(new Animated.Value(24)).current;
   const buyMeCoffeeOpacity = useRef(new Animated.Value(0)).current;
   const buyMeCoffeeTranslateY = useRef(new Animated.Value(50)).current;
+  const skeletonPulse = useRef(new Animated.Value(0.3)).current;
+  const cardsFadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (activeView === 'home') {
@@ -249,20 +260,25 @@ export default function App() {
   // Get current theme colors
   const colors = useMemo(() => theme === 'dark' ? darkTheme : lightTheme, [theme]);
 
-  // Initialize database on app start
+  // Initialize database and dismiss splash
   useEffect(() => {
-    const initDB = async () => {
+    const initApp = async () => {
       try {
-        console.log('Initializing local SQLite database...');
         await initDatabase();
-        console.log('Database ready!');
         setIsDbReady(true);
       } catch (error) {
         console.error('Failed to initialize database:', error);
         Alert.alert('Database Error', 'Failed to initialize local database. Please restart the app.');
       }
+      setTimeout(() => {
+        Animated.timing(splashFade, {
+          toValue: 0,
+          duration: 500,
+          useNativeDriver: true,
+        }).start(() => setShowSplash(false));
+      }, 600);
     };
-    initDB();
+    initApp();
   }, []);
 
   // Toggle theme
@@ -310,31 +326,32 @@ export default function App() {
     if (activeView === 'practice') {
       if (!hasAutoLoadedRef.current) {
         hasAutoLoadedRef.current = true;
-        const loadPracticeData = async () => {
-          getAvailableYears().then((years) => {
-            const yearsSet = new Set(years.map(String));
-            yearsSet.add(CURRENT_YEAR);
-            setAvailableYears(Array.from(yearsSet).sort((a, b) => Number(b) - Number(a)));
-          });
-          handleLoadFlashcards();
-        };
-        const timer = setTimeout(loadPracticeData, 100);
-        return () => clearTimeout(timer);
+        setIsLoadingCards(true);
+        getAvailableYears().then((years) => {
+          const yearsSet = new Set(years.map(String));
+          yearsSet.add(CURRENT_YEAR);
+          setAvailableYears(Array.from(yearsSet).sort((a, b) => Number(b) - Number(a)));
+        });
+        handleLoadFlashcards();
       }
     } else {
       hasAutoLoadedRef.current = false;
     }
   }, [activeView]);
 
-  // Auto-refetch data when sort conditions change (sortType, month, year)
+  const hasFiltersChangedRef = useRef(false);
   useEffect(() => {
-    // Only refetch if we're in practice view and data has been loaded at least once
     if (activeView === 'practice' && hasAutoLoadedRef.current) {
-      // Debounce the refetch to avoid multiple calls
+      if (!hasFiltersChangedRef.current) {
+        hasFiltersChangedRef.current = true;
+        return;
+      }
       const timer = setTimeout(() => {
         handleLoadFlashcards();
       }, 300);
       return () => clearTimeout(timer);
+    } else {
+      hasFiltersChangedRef.current = false;
     }
   }, [filters.sortType, filters.month, filters.year, activeView, handleLoadFlashcards]);
 
@@ -393,16 +410,33 @@ export default function App() {
 
     try {
       setIsSaving(true);
-      if (isEditing) {
-        await updateVocabulary(editingId, payload);
-        setFormStatus({ type: 'success', message: 'Vocabulary updated!' });
-      } else {
-        await addVocabulary(payload);
-        setFormStatus({ type: 'success', message: 'Vocabulary saved!' });
-      }
+      await addVocabulary(payload);
+      // Fetch updated list before updating any state
+      let newData, newMeta, newYears;
+      try {
+        const distinctYears = await getAvailableYears();
+        const yearsSet = new Set(distinctYears.map(String));
+        yearsSet.add(CURRENT_YEAR);
+        newYears = Array.from(yearsSet).sort((a, b) => Number(b) - Number(a));
+        const response = await getVocabulary({
+          sortType: managementFilters.sortType,
+          month: managementFilters.month ? Number(managementFilters.month) : undefined,
+          year: managementFilters.year ? Number(managementFilters.year) : undefined,
+          search: managementFilters.search,
+          limit: MANAGEMENT_LIMIT,
+          page: managementFilters.page,
+          sortOrder: managementFilters.sortOrder || 'asc',
+          sortBy: managementFilters.sortBy || 'name',
+        });
+        newData = response.data;
+        newMeta = response.meta;
+      } catch (_) {}
+      // Batch all state updates together
       setForm(defaultForm);
-      setEditingId(null);
-      await loadManagementList();
+      setFormStatus({ type: 'success', message: 'Vocabulary saved!' });
+      if (newData) setManagementList(newData);
+      if (newMeta) setManagementMeta(newMeta);
+      if (newYears) setAvailableYears(newYears);
     } catch (err) {
       setFormStatus({ type: 'error', message: err.message });
     } finally {
@@ -592,12 +626,7 @@ export default function App() {
   const handleQuickRange = (value) => {
     const newLimit = String(value);
     handleFilterChange('limit', newLimit);
-    setCurrentCardIndex(0); // Reset to first page when limit changes
-
-    // Auto-load data when range button is clicked
-    setTimeout(() => {
-      handleLoadFlashcards();
-    }, 100);
+    setCurrentCardIndex(0);
   };
 
   // Calculate paginated flashcards based on selected limit
@@ -762,8 +791,7 @@ export default function App() {
   };
 
   const handleEditEntry = (entry) => {
-    setActiveView('add');
-    setForm({
+    setEditForm({
       name: entry.name,
       meaning: entry.meaning,
       sortType: entry.sortType,
@@ -771,13 +799,42 @@ export default function App() {
       year: String(entry.year || ''),
     });
     setEditingId(entry.id);
-    setFormStatus({ type: 'success', message: `Editing ${entry.name}` });
+    setEditFormStatus(null);
+    setShowEditModal(true);
   };
 
   const handleCancelEdit = () => {
+    setShowEditModal(false);
     setEditingId(null);
-    setForm(defaultForm);
-    setFormStatus(null);
+    setEditForm(defaultForm);
+    setEditFormStatus(null);
+  };
+
+  const handleSaveEdit = async () => {
+    setEditFormStatus(null);
+    const error = validateVocabularyForm(editForm);
+    if (error) {
+      setEditFormStatus({ type: 'error', message: error });
+      return;
+    }
+    const payload = {
+      ...editForm,
+      month: Number(editForm.month),
+      year: Number(editForm.year),
+    };
+    try {
+      setIsEditSaving(true);
+      await updateVocabulary(editingId, payload);
+      setShowEditModal(false);
+      setEditingId(null);
+      setEditForm(defaultForm);
+      setEditFormStatus(null);
+      await loadManagementList();
+    } catch (err) {
+      setEditFormStatus({ type: 'error', message: err.message });
+    } finally {
+      setIsEditSaving(false);
+    }
   };
 
   const handleDeleteEntry = async (id) => {
@@ -880,6 +937,8 @@ export default function App() {
       });
       setForm(defaultForm);
       setEditingId(null);
+      setShowEditModal(false);
+      setEditForm(defaultForm);
     } catch (err) {
       console.error('Error deleting all vocabulary:', err);
       setListStatus({
@@ -958,10 +1017,10 @@ export default function App() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.secondaryCta, { borderColor: '#fff', backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}
-          onPress={() => setActiveView('webImport')}
+          onPress={() => setActiveView('jsonGuide')}
           activeOpacity={0.85}
         >
-          <Text style={styles.secondaryCtaText}>🌐 Web Import</Text>
+          <Text style={styles.secondaryCtaText}>📋 JSON Generation Guide</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.secondaryCta, { borderColor: '#fff', backgroundColor: 'rgba(255, 255, 255, 0.1)' }]}
@@ -975,11 +1034,17 @@ export default function App() {
   );
 
   const NAGAD_NUMBER = '01796297945';
+  const BKASH_NUMBER = '01796297945';
   const GMAIL_EMAIL = 'dev.koushiik@gmail.com';
   const handleCopyNumber = useCallback(async () => {
     await Clipboard.setStringAsync(NAGAD_NUMBER);
     setCopiedNumber(true);
     setTimeout(() => setCopiedNumber(false), 2000);
+  }, []);
+  const handleCopyBkash = useCallback(async () => {
+    await Clipboard.setStringAsync(BKASH_NUMBER);
+    setCopiedBkash(true);
+    setTimeout(() => setCopiedBkash(false), 2000);
   }, []);
   const handleCopyEmail = useCallback(async () => {
     await Clipboard.setStringAsync(GMAIL_EMAIL);
@@ -1026,9 +1091,33 @@ export default function App() {
       </View>
 
       <View style={[styles.bmcPaymentCard, {
+        backgroundColor: theme === 'dark' ? '#1e293b' : '#fdf2f8',
+        borderColor: theme === 'dark' ? '#334155' : '#fbcfe8',
+      }]}>
+        <View style={styles.bmcPaymentHeader}>
+          <View style={[styles.bmcMethodIcon, { backgroundColor: '#E2136E15' }]}>
+            <MaterialIcons name="account-balance-wallet" size={18} color="#E2136E" />
+          </View>
+          <Text style={[styles.bmcMethodName, { color: colors.text }]}>bKash (Personal)</Text>
+        </View>
+
+        <View style={styles.bmcNumberRow}>
+          <Text style={[styles.bmcNumberText, { color: colors.text }]}>{BKASH_NUMBER}</Text>
+          <TouchableOpacity
+            style={[styles.bmcCopyButton, { backgroundColor: colors.background }]}
+            onPress={handleCopyBkash}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.bmcCopyText, { color: colors.primary }]}>
+              {copiedBkash ? 'Copied' : 'Copy'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={[styles.bmcPaymentCard, {
         backgroundColor: theme === 'dark' ? '#1e293b' : '#f0f9ff',
         borderColor: theme === 'dark' ? '#334155' : '#bae6fd',
-        marginTop: 12
       }]}>
         <View style={styles.bmcPaymentHeader}>
           <View style={[styles.bmcMethodIcon, { backgroundColor: '#3b82f615' }]}>
@@ -1098,7 +1187,7 @@ export default function App() {
               borderWidth: 1,
               borderColor: colors.primary,
             }}
-            onPress={() => setActiveView('bulkInsert')}
+            onPress={() => { setBulkInsertStatus(null); setActiveView('bulkInsert'); }}
             activeOpacity={0.7}
           >
             <MaterialIcons name="upload-file" size={18} color="#fff" />
@@ -1106,16 +1195,6 @@ export default function App() {
           </TouchableOpacity>
         </View>
         <Text style={[styles.sectionTitle, { color: colors.text }]}>Add Vocabulary</Text>
-        {isEditing && (
-          <View style={[styles.editBanner, { backgroundColor: colors.quoteBg }]}>
-            <Text style={[styles.editBannerText, { color: colors.primary }]}>
-              Editing {form.name || 'Vocabulary'}
-            </Text>
-            <TouchableOpacity onPress={handleCancelEdit}>
-              <Text style={[styles.editBannerAction, { color: colors.error }]}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        )}
         <TextInput
           style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
           placeholder="Vocabulary"
@@ -1135,16 +1214,19 @@ export default function App() {
 
 
 
-        {formStatus && (
-          <Text
-            style={[
-              styles.feedback,
-              formStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
-            ]}
-          >
-            {formStatus.message}
-          </Text>
-        )}
+        <View style={{ height: 30 }}>
+          {formStatus && (
+            <Text
+              style={[
+                styles.feedback,
+                { marginBottom: 0 },
+                formStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
+              ]}
+            >
+              {formStatus.message}
+            </Text>
+          )}
+        </View>
 
         <TouchableOpacity
           style={[styles.button, { backgroundColor: colors.primary }, isSaving && styles.disabledButton]}
@@ -1155,115 +1237,137 @@ export default function App() {
             <ActivityIndicator color="#fff" />
           ) : (
             <Text style={styles.buttonText}>
-              {isEditing ? 'Update Vocabulary' : 'Save Vocabulary'}
+              Save Vocabulary
             </Text>
           )}
         </TouchableOpacity>
 
-        <View style={{ marginTop: 24, marginBottom: 12 }}>
-          <View style={[
-            styles.filterGroup,
-            {
+        {managementMeta?.grandTotal > 0 && (
+        <View style={{
+          marginTop: 24,
+          marginBottom: 12,
+          backgroundColor: colors.card,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: colors.border,
+          overflow: 'hidden',
+        }}>
+          <TouchableOpacity
+            style={{
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              paddingVertical: 14,
+              paddingHorizontal: 16,
               backgroundColor: colors.filterBg,
-              borderColor: colors.border,
-              borderRadius: 12,
-              padding: 0,
-              marginTop: 0,
-            },
-          ]}>
-            <TouchableOpacity
-              style={{
-                flexDirection: 'row',
-                justifyContent: 'space-between',
+            }}
+            onPress={() => setShowManagementFilters((prev) => !prev)}
+            activeOpacity={0.7}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <View style={{
+                width: 32,
+                height: 32,
+                borderRadius: 10,
+                backgroundColor: colors.primary,
                 alignItems: 'center',
-                paddingVertical: 16,
-                paddingHorizontal: 8,
-              }}
-              onPress={() => setShowManagementFilters((prev) => !prev)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.listTitle, { fontSize: 16, color: colors.text, paddingRight: 0 }]}>
+                justifyContent: 'center',
+              }}>
+                <MaterialIcons name="search" size={18} color="#fff" />
+              </View>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
                 Search & Filters
               </Text>
-              <Animated.Text
-                style={{
-                  color: colors.filterToggleText,
-                  fontSize: 16,
-                  fontWeight: 'bold',
-                  transform: [{ rotate: arrowRotation }],
-                }}
-              >
-                ▼
-              </Animated.Text>
-            </TouchableOpacity>
+            </View>
+            <Animated.View style={{ transform: [{ rotate: arrowRotation }] }}>
+              <MaterialIcons name="keyboard-arrow-down" size={24} color={colors.textMuted} />
+            </Animated.View>
+          </TouchableOpacity>
 
-            {showManagementFilters && (
-              <View style={{ padding: 10, paddingTop: 0 }}>
-                <View style={{ alignItems: 'flex-end', marginBottom: 8 }}>
-                  <TouchableOpacity onPress={handleResetManagementFilters}>
-                    <Text style={[styles.clearFilters, { color: colors.error }]}>Reset Filters</Text>
-                  </TouchableOpacity>
-                </View>
+          {showManagementFilters && (
+            <View style={{ padding: 16, paddingTop: 12, gap: 12 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                <TouchableOpacity
+                  onPress={handleResetManagementFilters}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    paddingVertical: 4,
+                    paddingHorizontal: 10,
+                    borderRadius: 8,
+                    backgroundColor: theme === 'dark' ? 'rgba(255,0,0,0.1)' : '#fef2f2',
+                  }}
+                >
+                  <MaterialIcons name="refresh" size={14} color={colors.error} />
+                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.error }}>Reset</Text>
+                </TouchableOpacity>
+              </View>
 
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                backgroundColor: colors.inputBg,
+                borderWidth: 1,
+                borderColor: colors.inputBorder,
+                borderRadius: 12,
+                paddingHorizontal: 12,
+              }}>
+                <MaterialIcons name="search" size={20} color={colors.textMuted} />
                 <TextInput
-                  style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
-                  placeholder="Search vocabulary"
+                  style={[styles.input, { flex: 1, borderWidth: 0, marginBottom: 0, backgroundColor: 'transparent', color: colors.text }]}
+                  placeholder="Search vocabulary..."
                   placeholderTextColor={colors.textMuted}
                   value={managementFilters.search}
                   onChangeText={(value) => handleManagementFilterChange('search', value)}
                 />
+              </View>
 
-                <View style={styles.row}>
-                  <View style={styles.half}>
-                    <Text style={[styles.label, { color: colors.text }]}>Sort</Text>
-                    <View style={{ marginBottom: 8 }}>
-                      <ModalPicker
-                        selectedValue={managementFilters.sortType}
-                        onValueChange={(value) => handleManagementFilterChange('sortType', value)}
-                        items={[{ label: 'All', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
-                        placeholder="All"
-                        colors={colors}
-                        theme={theme}
-                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                      />
-                    </View>
-                  </View>
-                  <View style={styles.half}>
-                    <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                    <View style={{ marginBottom: 8 }}>
-                      <ModalPicker
-                        selectedValue={managementFilters.month}
-                        onValueChange={(value) => handleManagementFilterChange('month', value)}
-                        items={[{ label: 'All', value: '' }, ...getAvailableMonths()]}
-                        placeholder="All"
-                        colors={colors}
-                        theme={theme}
-                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                      />
-                    </View>
-                  </View>
+              <View style={styles.row}>
+                <View style={styles.half}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>Sort</Text>
+                  <ModalPicker
+                    selectedValue={managementFilters.sortType}
+                    onValueChange={(value) => handleManagementFilterChange('sortType', value)}
+                    items={[{ label: 'All', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
+                    placeholder="All"
+                    colors={colors}
+                    theme={theme}
+                    containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                  />
                 </View>
-
-                <View style={styles.row}>
-                  <View style={styles.half}>
-                    <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                    <View style={{ marginBottom: 8 }}>
-                      <ModalPicker
-                        selectedValue={managementFilters.year}
-                        onValueChange={(value) => handleManagementFilterChange('year', value)}
-                        items={[{ label: 'All', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
-                        placeholder="All"
-                        colors={colors}
-                        theme={theme}
-                        containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                      />
-                    </View>
-                  </View>
+                <View style={styles.half}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>Month</Text>
+                  <ModalPicker
+                    selectedValue={managementFilters.month}
+                    onValueChange={(value) => handleManagementFilterChange('month', value)}
+                    items={[{ label: 'All', value: '' }, ...getAvailableMonths()]}
+                    placeholder="All"
+                    colors={colors}
+                    theme={theme}
+                    containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                  />
                 </View>
               </View>
-            )}
-          </View>
+
+              <View style={styles.row}>
+                <View style={styles.half}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>Year</Text>
+                  <ModalPicker
+                    selectedValue={managementFilters.year}
+                    onValueChange={(value) => handleManagementFilterChange('year', value)}
+                    items={[{ label: 'All', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
+                    placeholder="All"
+                    colors={colors}
+                    theme={theme}
+                    containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                  />
+                </View>
+              </View>
+            </View>
+          )}
         </View>
+        )}
 
 
 
@@ -1359,100 +1463,192 @@ export default function App() {
     </View>
   );
 
-  const renderPracticeSection = () => (
+  useEffect(() => {
+    if (!isLoadingCards) return;
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(skeletonPulse, { toValue: 0.6, duration: 800, useNativeDriver: true }),
+        Animated.timing(skeletonPulse, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+      ])
+    );
+    pulse.start();
+    return () => pulse.stop();
+  }, [isLoadingCards]);
+
+  useEffect(() => {
+    if (isLoadingCards) {
+      cardsFadeAnim.setValue(0);
+    } else {
+      Animated.timing(cardsFadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    }
+  }, [isLoadingCards]);
+
+  const renderSkeletonCards = (count = 5) => (
+    <View style={styles.flashcardGrid}>
+      {Array.from({ length: count }).map((_, i) => (
+        <View key={`skeleton-${i}`} style={styles.flashcardWrapper}>
+          <Animated.View style={{
+            backgroundColor: colors.flashcardBg || (theme === 'dark' ? '#1e293b' : '#eff6ff'),
+            borderRadius: 16,
+            padding: 24,
+            minHeight: 220,
+            width: '100%',
+            borderWidth: 1,
+            borderColor: colors.flashcardBorder || (theme === 'dark' ? '#334155' : '#dbeafe'),
+            opacity: skeletonPulse,
+          }}>
+            <View style={{ width: 70, height: 12, borderRadius: 6, backgroundColor: colors.border, marginBottom: 12 }} />
+            <View style={{ width: '80%', height: 18, borderRadius: 6, backgroundColor: colors.border, marginBottom: 8 }} />
+            <View style={{ width: '50%', height: 18, borderRadius: 6, backgroundColor: colors.border }} />
+            <View style={{ marginTop: 'auto', paddingTop: 16, borderTopWidth: 1, borderTopColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', alignItems: 'center' }}>
+              <View style={{ width: 60, height: 12, borderRadius: 6, backgroundColor: colors.border }} />
+            </View>
+          </Animated.View>
+        </View>
+      ))}
+    </View>
+  );
+
+  const renderPracticeSection = () => {
+    if (isLoadingCards && allFlashcards.length === 0) {
+      return (
+        <View style={{ paddingHorizontal: 8 }}>
+          {renderBackButton()}
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
+          {renderSkeletonCards(Number(filters.limit || 5))}
+        </View>
+      );
+    }
+
+    return (
     <View style={{ paddingHorizontal: 8 }}>
       {renderBackButton()}
       <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>Practice Flashcards</Text>
 
 
-      <View style={{ marginTop: 12, marginBottom: 12 }}>
-        <View style={[styles.filterGroup, { backgroundColor: colors.filterBg, borderColor: colors.border, borderRadius: 12, padding: 0, marginTop: 0 }]}>
-          <TouchableOpacity
-            style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 8 }}
-            onPress={() => setShowPracticeFilters((prev) => !prev)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.listTitle, { fontSize: 16, color: colors.text, paddingRight: 0 }]}>
-              {showPracticeFilters ? 'Hide Filters' : 'Show Filters'}
+      {allFlashcards.length > 0 && (
+      <>
+      <View style={{
+        marginTop: 12,
+        marginBottom: 12,
+        backgroundColor: colors.card,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: colors.border,
+        overflow: 'hidden',
+      }}>
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingVertical: 14,
+            paddingHorizontal: 16,
+            backgroundColor: colors.filterBg,
+          }}
+          onPress={() => setShowPracticeFilters((prev) => !prev)}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              backgroundColor: colors.primary,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <MaterialIcons name="tune" size={18} color="#fff" />
+            </View>
+            <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
+              Filters
             </Text>
-            <Animated.Text style={{ color: colors.filterToggleText, fontSize: 16, fontWeight: 'bold', transform: [{ rotate: practiceArrowRotation }] }}>
-              ▼
-            </Animated.Text>
-          </TouchableOpacity>
+          </View>
+          <Animated.View style={{ transform: [{ rotate: practiceArrowRotation }] }}>
+            <MaterialIcons name="keyboard-arrow-down" size={24} color={colors.textMuted} />
+          </Animated.View>
+        </TouchableOpacity>
 
-          {showPracticeFilters && (
-            <View style={{ padding: 10, paddingTop: 0 }}>
-              <Text style={[styles.label, { color: colors.text }]}>Sort Filter</Text>
-              <View style={{ marginBottom: 8 }}>
+        {showPracticeFilters && (
+          <View style={{ padding: 16, paddingTop: 12, gap: 12 }}>
+            <View>
+              <Text style={[styles.label, { color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }]}>Sort By Letter</Text>
+              <ModalPicker
+                selectedValue={filters.sortType}
+                onValueChange={(value) => handleFilterChange('sortType', value)}
+                items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
+                placeholder="A - Z (All)"
+                colors={colors}
+                theme={theme}
+                containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+              />
+            </View>
+
+            <View style={styles.row}>
+              <View style={styles.half}>
+                <Text style={[styles.label, { color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }]}>Month</Text>
                 <ModalPicker
-                  selectedValue={filters.sortType}
-                  onValueChange={(value) => handleFilterChange('sortType', value)}
-                  items={[{ label: 'A - Z (All)', value: '' }, ...SORT_OPTIONS.map((o) => ({ label: o, value: o }))]}
-                  placeholder="A - Z (All)"
+                  selectedValue={filters.month}
+                  onValueChange={(value) => handleFilterChange('month', value)}
+                  items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
+                  placeholder="Any"
                   colors={colors}
                   theme={theme}
                   containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
                 />
               </View>
-
-              <View style={styles.row}>
-                <View style={styles.half}>
-                  <Text style={[styles.label, { color: colors.text }]}>Month</Text>
-                  <View style={{ marginBottom: 8 }}>
-                    <ModalPicker
-                      selectedValue={filters.month}
-                      onValueChange={(value) => handleFilterChange('month', value)}
-                      items={[{ label: 'Any', value: '' }, ...getAvailableMonths()]}
-                      placeholder="Any"
-                      colors={colors}
-                      theme={theme}
-                      containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                    />
-                  </View>
-                </View>
-                <View style={styles.half}>
-                  <Text style={[styles.label, { color: colors.text }]}>Year</Text>
-                  <View style={{ marginBottom: 8 }}>
-                    <ModalPicker
-                      selectedValue={filters.year}
-                      onValueChange={(value) => handleFilterChange('year', value)}
-                      items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
-                      placeholder="Any"
-                      colors={colors}
-                      theme={theme}
-                      containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
-                    />
-                  </View>
-                </View>
+              <View style={styles.half}>
+                <Text style={[styles.label, { color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }]}>Year</Text>
+                <ModalPicker
+                  selectedValue={filters.year}
+                  onValueChange={(value) => handleFilterChange('year', value)}
+                  items={[{ label: 'Any', value: '' }, ...availableYears.map((y) => ({ label: y, value: y }))]}
+                  placeholder="Any"
+                  colors={colors}
+                  theme={theme}
+                  containerStyle={theme === 'dark' ? { backgroundColor: colors.inputBg, borderColor: colors.border } : { borderColor: colors.border }}
+                />
               </View>
             </View>
-          )}
-        </View>
+          </View>
+        )}
       </View>
 
-
-      <View style={{ marginTop: 12, marginBottom: 12, paddingVertical: 12, paddingHorizontal: 8 }}>
-        <Text style={[styles.label, { color: colors.text, marginBottom: 8 }]}>Range (cards per session)</Text>
+      <View style={{
+        marginBottom: 12,
+        backgroundColor: colors.card,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: colors.border,
+        padding: 16,
+      }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <View style={{
+            width: 32,
+            height: 32,
+            borderRadius: 10,
+            backgroundColor: colors.primary,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <MaterialIcons name="style" size={18} color="#fff" />
+          </View>
+          <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>Cards Per Session</Text>
+        </View>
         <View style={styles.rangeRow}>
           {[5, 10, 15].map((value) => (
             <TouchableOpacity
               key={`range-${value}`}
               style={[
                 styles.rangeButton,
-                { borderColor: colors.rangeButtonBorder },
+                { borderColor: colors.rangeButtonBorder, borderRadius: 12, paddingVertical: 10 },
                 filters.limit === String(value) && { backgroundColor: colors.rangeButtonActiveBg, borderColor: colors.rangeButtonActiveBorder },
-                isLoadingCards && styles.disabledButton,
               ]}
               onPress={() => handleQuickRange(value)}
-              disabled={isLoadingCards}
             >
-              {isLoadingCards && filters.limit === String(value) ? (
-                <ActivityIndicator color={colors.rangeButtonActiveText} size="small" />
-              ) : (
-                <Text style={[styles.rangeButtonText, { color: colors.rangeButtonText }, filters.limit === String(value) && { color: colors.rangeButtonActiveText }]}>
-                  {value} cards
-                </Text>
-              )}
+              <Text style={[styles.rangeButtonText, { color: colors.rangeButtonText, fontWeight: '600' }, filters.limit === String(value) && { color: colors.rangeButtonActiveText }]}>
+                {value} cards
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -1462,18 +1658,17 @@ export default function App() {
           </Text>
         )}
       </View>
+      </>
+      )}
 
       {isLoadingCards ? (
-        <View style={[styles.loadingContainer, { paddingHorizontal: 8 }]}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={[styles.loadingText, { color: colors.text }]}>Loading flashcards...</Text>
-        </View>
+        renderSkeletonCards(Number(filters.limit || 5))
       ) : allFlashcards.length > 0 ? (
-        <View style={styles.practiceArea}>
+        <Animated.View style={[styles.practiceArea, { opacity: cardsFadeAnim }]}>
           <View style={styles.flashcardGrid}>
             {currentPageFlashcards.map((card, idx) => (
               <View key={card.id || `${card.name}-${card.year}-${idx}`} style={styles.flashcardWrapper}>
-                <Flashcard card={card} theme={colors} themeMode={theme} showMarkDone onMarkDone={handleMarkDone} entranceDelay={idx * 80} />
+                <Flashcard card={card} theme={colors} themeMode={theme} showMarkDone onMarkDone={handleMarkDone} entranceDelay={0} />
               </View>
             ))}
           </View>
@@ -1501,16 +1696,47 @@ export default function App() {
               </View>
             )}
           </View>
-        </View>
+        </Animated.View>
       ) : (
-        <View style={[styles.emptyStateContainer, { paddingHorizontal: 8 }]}>
-          <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-            No flashcards found.
+        <View style={{
+          paddingVertical: 48,
+          paddingHorizontal: 24,
+          alignItems: 'center',
+          backgroundColor: theme === 'dark' ? colors.card : '#f8fafc',
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: theme === 'dark' ? colors.border : '#e2e8f0',
+          borderStyle: 'dashed',
+          marginHorizontal: 8,
+        }}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>📭</Text>
+          <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 8, textAlign: 'center' }}>
+            No Flashcards Found
           </Text>
+          <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
+            Add some vocabulary first, or try different filters.
+          </Text>
+          <TouchableOpacity
+            style={{
+              backgroundColor: colors.primary,
+              borderRadius: 10,
+              paddingVertical: 12,
+              paddingHorizontal: 24,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 8,
+            }}
+            onPress={() => setActiveView('add')}
+            activeOpacity={0.8}
+          >
+            <MaterialIcons name="add" size={20} color="#fff" />
+            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Add Vocabulary</Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
   );
+  };
 
   const renderDoneListSection = () => {
     const formatMonthLabel = (value) => {
@@ -1523,23 +1749,34 @@ export default function App() {
     const doneCardBorder = theme === 'dark' ? colors.primaryLight : '#f1f5f9';
 
     return (
-      <View style={{ gap: 20, width: '100%', alignItems: 'flex-start' }}>
+      <View style={{ width: '100%' }}>
         {renderBackButton()}
-        <View style={{ marginBottom: 4, width: '100%', alignSelf: 'stretch' }}>
-          <Text style={[styles.sectionTitle, { color: colors.text, fontSize: 24, textAlign: 'left' }]}>Done List</Text>
-          <Text style={[styles.subtitle, { color: colors.textSecondary, fontSize: 15, marginTop: 4, textAlign: 'left' }]}>
-            Words you've mastered. Return to practice or remove.
-          </Text>
-        </View>
+        {doneList.length > 0 && (
+          <View style={{
+            backgroundColor: theme === 'dark' ? colors.card : '#eff6ff',
+            borderRadius: 12,
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            alignSelf: 'center',
+            gap: 8,
+          }}>
+            <MaterialIcons name="check-circle" size={20} color={colors.success || '#16a34a'} />
+            <Text style={{ color: colors.text, fontSize: 14, fontWeight: '600' }}>
+              {doneList.length} word{doneList.length !== 1 ? 's' : ''} mastered
+            </Text>
+          </View>
+        )}
 
         {doneList.length > 0 && (
           <View
             style={{
               flexDirection: 'row',
               gap: 10,
-              marginBottom: 8,
               width: '100%',
-              alignSelf: 'stretch',
+              marginTop: 12,
             }}
           >
             <TouchableOpacity
@@ -1559,8 +1796,8 @@ export default function App() {
               onPress={handleReturnAllToPractice}
               activeOpacity={0.7}
             >
-              <Text style={{ fontSize: 18 }}>↩</Text>
-              <Text style={{ color: colors.doneListReturnAllText, fontWeight: '600', fontSize: 15 }}>
+              <MaterialIcons name="replay" size={18} color={colors.doneListReturnAllText} />
+              <Text style={{ color: colors.doneListReturnAllText, fontWeight: '600', fontSize: 14 }}>
                 Return All
               </Text>
             </TouchableOpacity>
@@ -1581,8 +1818,8 @@ export default function App() {
               onPress={confirmClearDoneList}
               activeOpacity={0.7}
             >
-              <Text style={{ fontSize: 16 }}>🗑</Text>
-              <Text style={{ color: colors.doneListClearAllText, fontWeight: '600', fontSize: 15 }}>
+              <MaterialIcons name="delete-outline" size={18} color={colors.doneListClearAllText} />
+              <Text style={{ color: colors.doneListClearAllText, fontWeight: '600', fontSize: 14 }}>
                 Clear All
               </Text>
             </TouchableOpacity>
@@ -1590,177 +1827,155 @@ export default function App() {
         )}
 
         {isLoadingDoneList ? (
-          <View style={[styles.loadingContainer, { paddingVertical: 48, width: '100%', alignSelf: 'stretch' }]}>
+          <View style={[styles.loadingContainer, { paddingVertical: 48, width: '100%', marginTop: 12 }]}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.text, marginTop: 12 }]}>Loading...</Text>
           </View>
         ) : doneList.length === 0 ? (
           <View
             style={{
-              paddingVertical: 48,
-              paddingHorizontal: 8,
+              paddingVertical: 56,
+              paddingHorizontal: 24,
               alignItems: 'center',
-              backgroundColor: theme === 'dark' ? colors.background : '#f8fafc',
+              width: '100%',
+              marginTop: 12,
+              backgroundColor: theme === 'dark' ? colors.card : '#f8fafc',
               borderRadius: 16,
               borderWidth: 1,
               borderColor: doneCardBorder,
               borderStyle: 'dashed',
             }}
           >
-            <Text style={{ fontSize: 40, marginBottom: 12, color: colors.success || '#16a34a' }}>✓</Text>
-            <Text style={[styles.emptyStateText, { color: colors.textMuted, textAlign: 'center' }]}>
-              No items yet. Mark cards as done during practice to add them here.
+            <Text style={{ fontSize: 48, marginBottom: 16 }}>🎯</Text>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 8, textAlign: 'center' }}>
+              No Mastered Words Yet
             </Text>
+            <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20, marginBottom: 20 }}>
+              Practice flashcards and mark words as done to see them here.
+            </Text>
+            <TouchableOpacity
+              style={{
+                backgroundColor: colors.primary,
+                borderRadius: 10,
+                paddingVertical: 12,
+                paddingHorizontal: 24,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+              }}
+              onPress={() => setActiveView('practice')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="school" size={20} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Start Practice</Text>
+            </TouchableOpacity>
           </View>
         ) : (
-          <View style={{ gap: 14, width: '100%', alignSelf: 'stretch' }}>
-            {doneList.map((entry) => {
-              const cardInner = (
-                <View
-                  style={{
-                    backgroundColor: doneCardBg,
-                    borderRadius: theme === 'dark' ? 10 : 12,
-                    padding: 20,
-                    width: '100%',
-                    alignItems: 'flex-start',
-                  }}
-                >
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, width: '100%' }}>
-                    <Text
-                      style={{
-                        fontSize: 20,
-                        fontWeight: '700',
-                        color: colors.text,
-                        flex: 1,
-                        letterSpacing: -0.3,
-                        textAlign: 'left',
-                      }}
-                      numberOfLines={2}
-                    >
-                      {entry.name}
-                    </Text>
-                    <View
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 4,
-                        borderRadius: 8,
-                        backgroundColor: theme === 'dark' ? colors.border : '#f1f5f9',
-                      }}
-                    >
-                      <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>
-                        {entry.sortType}
-                      </Text>
-                    </View>
+          <View style={{ gap: 12, width: '100%', marginTop: 12 }}>
+            {doneList.map((entry) => (
+              <View
+                key={entry.id}
+                style={{
+                  width: '100%',
+                  backgroundColor: doneCardBg,
+                  borderRadius: 14,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: theme === 'dark' ? colors.border : '#e2e8f0',
+                  ...(theme === 'light' ? {
+                    shadowColor: '#000',
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    shadowOffset: { width: 0, height: 2 },
+                    elevation: 2,
+                  } : {}),
+                }}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 }}>
+                  <View style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    backgroundColor: theme === 'dark' ? colors.border : '#eff6ff',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: colors.primary }}>{entry.sortType}</Text>
                   </View>
                   <Text
-                    style={{
-                      fontSize: 16,
-                      color: colors.textSecondary,
-                      lineHeight: 22,
-                      marginBottom: 12,
-                      textAlign: 'left',
-                    }}
-                    numberOfLines={3}
+                    style={{ fontSize: 18, fontWeight: '700', color: colors.text, flex: 1 }}
+                    numberOfLines={2}
                   >
-                    {entry.meaning}
+                    {entry.name}
                   </Text>
-                  <Text
-                    style={{
-                      fontSize: 13,
-                      color: colors.textMuted,
-                      marginBottom: 16,
-                      textAlign: 'left',
-                    }}
-                  >
+                  <Text style={{ fontSize: 12, color: colors.textMuted }}>
                     {formatMonthLabel(entry.month)} {entry.year}
                   </Text>
-                  <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        paddingVertical: 10,
-                        paddingHorizontal: 8,
-                        borderRadius: 10,
-                        backgroundColor: colors.primary,
-                        alignItems: 'center',
-                      }}
-                      onPress={() => handleReturnToPractice(entry.id)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Return to Practice</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={{
-                        paddingVertical: 10,
-                        paddingHorizontal: 8,
-                        borderRadius: 10,
-                        backgroundColor: 'transparent',
-                        borderWidth: 1,
-                        borderColor: colors.doneListRemoveBorder,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                      }}
-                      onPress={() => {
-                        Alert.alert(
-                          'Remove',
-                          `Remove ${entry.name} from done list?`,
-                          [
-                            { text: 'Cancel', style: 'cancel' },
-                            {
-                              text: 'Remove',
-                              style: 'destructive',
-                              onPress: () => handleDeleteFromDoneList(entry.id),
-                            },
-                          ]
-                        );
-                      }}
-                      disabled={deletingDoneId === entry.id}
-                      activeOpacity={0.8}
-                    >
-                      {deletingDoneId === entry.id ? (
-                        <ActivityIndicator size="small" color={colors.error} />
-                      ) : (
-                        <Text style={{ color: colors.doneListRemoveText, fontWeight: '600', fontSize: 14 }}>Remove</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
                 </View>
-              );
-
-              return (
-                <View key={entry.id} style={{ width: '100%', alignSelf: 'stretch' }}>
-                  {theme === 'dark' ? (
-                    <View
-                      style={{
-                        marginBottom: 14,
-                        borderRadius: 12,
-                        borderWidth: 2,
-                        borderColor: colors.primaryLight,
-                        backgroundColor: colors.background,
-                        overflow: 'hidden',
-                      }}
-                    >
-                      {cardInner}
-                    </View>
-                  ) : (
-                    <View
-                      style={{
-                        shadowColor: colors.primary || '#3b82f6',
-                        shadowOpacity: 0.2,
-                        shadowRadius: 12,
-                        shadowOffset: { width: 0, height: 6 },
-                        elevation: 6,
-                        borderRadius: 12,
-                        borderWidth: 1,
-                        borderColor: colors.flashcardBorder || '#dbeafe',
-                      }}
-                    >
-                      {cardInner}
-                    </View>
-                  )}
+                <Text
+                  style={{ fontSize: 15, color: colors.textSecondary, lineHeight: 22, marginBottom: 14 }}
+                  numberOfLines={3}
+                >
+                  {entry.meaning}
+                </Text>
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                      flexDirection: 'row',
+                      justifyContent: 'center',
+                      gap: 6,
+                    }}
+                    onPress={() => handleReturnToPractice(entry.id)}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="replay" size={16} color="#fff" />
+                    <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>Return</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{
+                      paddingVertical: 10,
+                      paddingHorizontal: 16,
+                      borderRadius: 10,
+                      borderWidth: 1,
+                      borderColor: colors.doneListRemoveBorder,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexDirection: 'row',
+                      gap: 6,
+                    }}
+                    onPress={() => {
+                      Alert.alert(
+                        'Remove',
+                        `Remove "${entry.name}" from done list?`,
+                        [
+                          { text: 'Cancel', style: 'cancel' },
+                          {
+                            text: 'Remove',
+                            style: 'destructive',
+                            onPress: () => handleDeleteFromDoneList(entry.id),
+                          },
+                        ]
+                      );
+                    }}
+                    disabled={deletingDoneId === entry.id}
+                    activeOpacity={0.8}
+                  >
+                    {deletingDoneId === entry.id ? (
+                      <ActivityIndicator size="small" color={colors.error} />
+                    ) : (
+                      <>
+                        <MaterialIcons name="delete-outline" size={16} color={colors.doneListRemoveText} />
+                        <Text style={{ color: colors.doneListRemoveText, fontWeight: '600', fontSize: 13 }}>Remove</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
                 </View>
-              );
-            })}
+              </View>
+            ))}
           </View>
         )}
       </View>
@@ -1773,6 +1988,7 @@ export default function App() {
         <Text
           style={[
             styles.feedback,
+            { textAlign: 'center' },
             listStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
           ]}
         >
@@ -1780,33 +1996,32 @@ export default function App() {
         </Text>
       )}
       {managementMeta && managementMeta.totalPages > 1 && (
-        <View style={styles.paginationRow}>
-          <TouchableOpacity
-            style={[
-              styles.paginationButton,
-              { borderColor: colors.rangeButtonBorder, backgroundColor: 'transparent' },
-              managementFilters.page === 1 && styles.disabledButton,
-            ]}
-            onPress={() => handleManagementPageChange('prev')}
-            disabled={managementFilters.page === 1}
-          >
-            <Text style={[styles.paginationText, { color: colors.rangeButtonText }]}>Prev</Text>
-          </TouchableOpacity>
-          <Text style={[styles.paginationMeta, { color: colors.text }]}>
+        <View style={{ paddingHorizontal: 8, paddingTop: 16, paddingBottom: 8 }}>
+          <Text style={{ textAlign: 'center', color: colors.textMuted, fontSize: 13, fontWeight: '600', marginBottom: 12 }}>
             Page {managementMeta.currentPage} of {managementMeta.totalPages}
           </Text>
-          <TouchableOpacity
-            style={[
-              styles.paginationButton,
-              { borderColor: colors.rangeButtonBorder, backgroundColor: 'transparent' },
-              managementMeta.currentPage >= managementMeta.totalPages &&
-              styles.disabledButton,
-            ]}
-            onPress={() => handleManagementPageChange('next')}
-            disabled={managementMeta.currentPage >= managementMeta.totalPages}
-          >
-            <Text style={[styles.paginationText, { color: colors.rangeButtonText }]}>Next</Text>
-          </TouchableOpacity>
+          <View style={styles.practiceNav}>
+            <TouchableOpacity
+              style={[styles.practiceNavButton, { backgroundColor: colors.practiceNavPrevBg }, managementFilters.page === 1 && styles.disabledButton]}
+              onPress={() => handleManagementPageChange('prev')}
+              disabled={managementFilters.page === 1}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <MaterialIcons name="chevron-left" size={20} color={colors.practiceNavText} />
+                <Text style={[styles.practiceNavText, { color: colors.practiceNavText }]}>Previous</Text>
+              </View>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.practiceNavButton, { backgroundColor: colors.practiceNavNextBg }, managementMeta.currentPage >= managementMeta.totalPages && styles.disabledButton]}
+              onPress={() => handleManagementPageChange('next')}
+              disabled={managementMeta.currentPage >= managementMeta.totalPages}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <Text style={[styles.practiceNavText, { color: colors.practiceNavText }]}>Next</Text>
+                <MaterialIcons name="chevron-right" size={20} color={colors.practiceNavText} />
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
       {isLoadingList && (
@@ -1891,7 +2106,7 @@ export default function App() {
         <Text
           style={[
             styles.feedback,
-            { marginTop: 16 },
+            { marginTop: 16, textAlign: 'center' },
             bulkInsertStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
           ]}
         >
@@ -1903,13 +2118,58 @@ export default function App() {
 
   const commonHeader = null;
 
+  if (showSplash) {
+    return (
+      <View style={{
+        flex: 1,
+        backgroundColor: '#ffffff',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <StatusBar style="dark" />
+        <Animated.View style={{ opacity: splashFade, alignItems: 'center' }}>
+          <Text style={{
+            fontSize: 130,
+            fontWeight: '900',
+            color: '#2563eb',
+            lineHeight: 140,
+          }}>V</Text>
+          <Text style={{
+            fontSize: 13,
+            fontWeight: '600',
+            color: '#94a3b8',
+            letterSpacing: 6,
+            textTransform: 'uppercase',
+            marginTop: 4,
+          }}>Build Your</Text>
+          <Text style={{
+            fontSize: 13,
+            fontWeight: '600',
+            color: '#94a3b8',
+            letterSpacing: 6,
+            textTransform: 'uppercase',
+            marginTop: 2,
+          }}>Vocabulary</Text>
+        </Animated.View>
+      </View>
+    );
+  }
+
   if (activeView === 'home') {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.heroBg }]}>
         <StatusBar style={theme === 'dark' ? 'light' : 'light'} />
         <View style={[styles.heroFull, { justifyContent: 'space-between' }]}>
           <View style={{ flex: 1, justifyContent: 'center' }}>{renderHome()}</View>
-          <Animated.View style={{ opacity: buyMeCoffeeOpacity, transform: [{ translateY: buyMeCoffeeTranslateY }] }}>
+          <Animated.View style={{ opacity: buyMeCoffeeOpacity, transform: [{ translateY: buyMeCoffeeTranslateY }], gap: 10 }}>
+            <TouchableOpacity
+              style={[styles.buyMeCoffeeLink, { borderColor: colors.primaryLighter }]}
+              onPress={() => setActiveView('reportBug')}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="bug-report" size={20} color={colors.primaryLighter} />
+              <Text style={[styles.buyMeCoffeeLinkText, { color: colors.primaryLighter }]}>Report a Bug</Text>
+            </TouchableOpacity>
             <TouchableOpacity
               style={[styles.buyMeCoffeeLink, { borderColor: colors.primaryLighter }]}
               onPress={() => setActiveView('buyMeACoffee')}
@@ -1920,6 +2180,106 @@ export default function App() {
             </TouchableOpacity>
           </Animated.View>
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (activeView === 'reportBug') {
+    const bugEmail = 'dev.koushiik@gmail.com';
+    return (
+      <SafeAreaView style={[styles.safe, { backgroundColor: colors.background, flex: 1 }]}>
+        <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          backgroundColor: colors.card,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+          gap: 10,
+        }}>
+          <TouchableOpacity
+            onPress={() => setActiveView('home')}
+            activeOpacity={0.7}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              borderRadius: 8,
+              backgroundColor: colors.backButtonBg,
+              borderWidth: 1,
+              borderColor: colors.backButtonBorder,
+            }}
+          >
+            <Text style={{ fontSize: 18, color: colors.primary, marginRight: 4 }}>←</Text>
+            <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Home</Text>
+          </TouchableOpacity>
+          <MaterialIcons name="bug-report" size={22} color={colors.primary} />
+          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, flex: 1 }} numberOfLines={1}>Report a Bug</Text>
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+          <Text style={{ color: colors.text, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>Found a bug?</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 14, lineHeight: 22, marginBottom: 20 }}>
+            Send us an email describing the issue. Include steps to reproduce, what you expected, and what happened instead.
+          </Text>
+
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 12,
+            padding: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: 16,
+          }}>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 6 }}>Email</Text>
+            <Text style={{ color: colors.text, fontSize: 16, fontWeight: '600', marginBottom: 14 }}>{bugEmail}</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.primary,
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+                onPress={() => {
+                  Linking.openURL(`mailto:${bugEmail}?subject=Bug Report - Vocab Drill&body=Bug Description:%0A%0ASteps to Reproduce:%0A1.%0A2.%0A3.%0A%0AExpected Behavior:%0A%0AActual Behavior:%0A`);
+                }}
+              >
+                <MaterialIcons name="email" size={18} color="#fff" />
+                <Text style={{ color: '#fff', fontWeight: '600', fontSize: 14 }}>Open Gmail</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.card,
+                  borderRadius: 10,
+                  paddingVertical: 12,
+                  alignItems: 'center',
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  gap: 8,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+                onPress={async () => {
+                  await Clipboard.setStringAsync(bugEmail);
+                  Alert.alert('Copied!', 'Email copied to clipboard.');
+                }}
+              >
+                <MaterialIcons name="content-copy" size={18} color={colors.text} />
+                <Text style={{ color: colors.text, fontWeight: '600', fontSize: 14 }}>Copy Email</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -1958,15 +2318,14 @@ export default function App() {
     );
   }
 
-  if (activeView === 'webImport') {
+  if (activeView === 'jsonGuide') {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.background, flex: 1 }]}>
         <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
         <View style={{
-          flexDirection: 'row',
-          alignItems: 'center',
           paddingHorizontal: 12,
-          paddingVertical: 10,
+          paddingTop: 10,
+          paddingBottom: 12,
           backgroundColor: colors.card,
           borderBottomWidth: 1,
           borderBottomColor: colors.border,
@@ -1978,6 +2337,7 @@ export default function App() {
             style={{
               flexDirection: 'row',
               alignItems: 'center',
+              alignSelf: 'flex-start',
               paddingVertical: 6,
               paddingHorizontal: 10,
               borderRadius: 8,
@@ -1989,22 +2349,314 @@ export default function App() {
             <Text style={{ fontSize: 18, color: colors.primary, marginRight: 4 }}>←</Text>
             <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 14 }}>Home</Text>
           </TouchableOpacity>
-          <MaterialIcons name="language" size={22} color={colors.primary} />
-          <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16, flex: 1 }} numberOfLines={1}>Web Import</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6, marginBottom: 4 }}>
+            <MaterialIcons name="description" size={22} color={colors.primary} />
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 18 }}>JSON Generation Guide</Text>
+          </View>
         </View>
-        <WebView
-          source={{ uri: 'https://vocab-drill-one.vercel.app/' }}
-          style={{ flex: 1 }}
-          startInLoadingState={true}
-          renderLoading={() => (
-            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={{ color: colors.textSecondary, marginTop: 12, fontSize: 14 }}>Loading Vocab Drill...</Text>
+        <View style={{ flexDirection: 'row', backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, paddingHorizontal: 12, gap: 8, paddingVertical: 12 }}>
+          {['english', 'bangla'].map((tab) => (
+            <TouchableOpacity
+              key={tab}
+              activeOpacity={0.7}
+              onPress={() => setGuideTab(tab)}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                alignItems: 'center',
+                borderRadius: 10,
+                backgroundColor: guideTab === tab ? colors.primary : (theme === 'dark' ? 'rgba(255,255,255,0.06)' : '#f1f5f9'),
+              }}
+            >
+              <Text style={{
+                color: guideTab === tab ? '#fff' : colors.textSecondary,
+                fontWeight: '700',
+                fontSize: 14,
+              }}>
+                {tab === 'english' ? 'English' : 'বাংলা (Bangla)'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 20 }}>
+
+          {/* Required Format Section */}
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            overflow: 'hidden',
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 16, paddingBottom: 12 }}>
+              <View style={{
+                width: 32, height: 32, borderRadius: 10,
+                backgroundColor: colors.primary,
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <MaterialIcons name="code" size={18} color="#fff" />
+              </View>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>
+                {guideTab === 'english' ? 'Required Format' : 'প্রয়োজনীয় ফরম্যাট'}
+              </Text>
             </View>
-          )}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-        />
+            <View style={{
+              marginHorizontal: 16,
+              marginBottom: 16,
+              backgroundColor: theme === 'dark' ? '#0D0D0D' : '#f8fafc',
+              borderRadius: 12,
+              padding: 14,
+              borderWidth: 1,
+              borderColor: theme === 'dark' ? colors.borderLight : '#e2e8f0',
+            }}>
+              <Text style={{ color: theme === 'dark' ? '#4ade80' : '#16a34a', fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', lineHeight: 22 }}>
+                {guideTab === 'english'
+                  ? '[\n  {"name": "Love", "meaning": "A deep affection"},\n  {"name": "Brave", "meaning": "Ready to face danger"}\n]'
+                  : '[\n  {"name": "Love", "meaning": "ভালোবাসা"},\n  {"name": "Brave", "meaning": "সাহসী"}\n]'}
+              </Text>
+            </View>
+          </View>
+
+          {/* Quick Prompts Section */}
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 16,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <View style={{
+                width: 32, height: 32, borderRadius: 10,
+                backgroundColor: colors.primary,
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <MaterialIcons name="bolt" size={18} color="#fff" />
+              </View>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>
+                {guideTab === 'english' ? 'Quick Prompts' : 'দ্রুত প্রম্পট'}
+              </Text>
+            </View>
+            <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 18, marginBottom: 14, marginLeft: 42 }}>
+              {guideTab === 'english'
+                ? 'Tap to copy. Use with ChatGPT, Claude, or any AI.'
+                : 'কপি করতে ট্যাপ করুন। ChatGPT, Claude, বা যেকোনো AI-তে ব্যবহার করুন।'}
+            </Text>
+            <View style={{ gap: 12 }}>
+              {[
+                {
+                  label: guideTab === 'english' ? '20 Basic Words' : '২০টি সহজ শব্দ',
+                  icon: 'menu-book',
+                  color: '#16a34a',
+                  en: 'Generate a JSON array of 20 basic everyday English vocabulary words with their simple English meanings. Format each item as {"name": "Love", "meaning": "A deep affection"}. Return only the JSON array, no extra text.',
+                  bn: 'Generate a JSON array of 20 basic everyday English vocabulary words with their Bangla (Bengali) meanings. Format each item as {"name": "Love", "meaning": "ভালোবাসা"}. Return only the JSON array, no extra text.',
+                },
+                {
+                  label: guideTab === 'english' ? '20 Intermediate Words' : '২০টি মধ্যম স্তরের শব্দ',
+                  icon: 'school',
+                  color: '#2563eb',
+                  en: 'Generate a JSON array of 20 intermediate-level English vocabulary words with their English meanings. Choose words commonly used in academic or professional contexts. Format each item as {"name": "Love", "meaning": "A deep affection"}. Return only the JSON array, no extra text.',
+                  bn: 'Generate a JSON array of 20 intermediate-level English vocabulary words with their Bangla (Bengali) meanings. Choose words commonly used in academic or professional contexts. Format each item as {"name": "Love", "meaning": "ভালোবাসা"}. Return only the JSON array, no extra text.',
+                },
+                {
+                  label: guideTab === 'english' ? '20 IELTS Words' : '২০টি IELTS শব্দ',
+                  icon: 'workspace-premium',
+                  color: '#dc2626',
+                  en: 'Generate a JSON array of 20 advanced English vocabulary words frequently tested in IELTS exams with their English meanings. Format each item as {"name": "Love", "meaning": "A deep affection"}. Return only the JSON array, no extra text.',
+                  bn: 'Generate a JSON array of 20 advanced English vocabulary words frequently tested in IELTS exams with their Bangla (Bengali) meanings. Format each item as {"name": "Love", "meaning": "ভালোবাসা"}. Return only the JSON array, no extra text.',
+                },
+                {
+                  label: guideTab === 'english' ? '100 Mixed Words' : '১০০টি মিশ্র শব্দ',
+                  icon: 'library-books',
+                  color: '#a855f7',
+                  en: 'Generate a JSON array of 100 English vocabulary words (mix of basic, intermediate, and advanced) with their English meanings. Format each item as {"name": "Love", "meaning": "A deep affection"}. Return only the JSON array, no extra text.',
+                  bn: 'Generate a JSON array of 100 English vocabulary words (mix of basic, intermediate, and advanced) with their Bangla (Bengali) meanings. Format each item as {"name": "Love", "meaning": "ভালোবাসা"}. Return only the JSON array, no extra text.',
+                },
+              ].map((item, i) => (
+                <View
+                  key={i}
+                  style={{
+                    backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.04)' : '#f8fafc',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    overflow: 'hidden',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, paddingBottom: 10 }}>
+                    <View style={{
+                      width: 32, height: 32, borderRadius: 8,
+                      backgroundColor: item.color + '18',
+                      alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <MaterialIcons name={item.icon} size={18} color={item.color} />
+                    </View>
+                    <Text style={{ color: colors.text, fontSize: 14, fontWeight: '700', flex: 1 }}>{item.label}</Text>
+                  </View>
+                  <View style={{
+                    marginHorizontal: 14,
+                    marginBottom: 12,
+                    backgroundColor: theme === 'dark' ? '#0D0D0D' : '#f1f5f9',
+                    borderRadius: 8,
+                    padding: 10,
+                  }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 18 }}>
+                      {guideTab === 'english' ? item.en : item.bn}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={async () => {
+                      const prompt = guideTab === 'english' ? item.en : item.bn;
+                      await Clipboard.setStringAsync(prompt);
+                      Alert.alert(
+                        guideTab === 'english' ? 'Copied!' : 'কপি হয়েছে!',
+                        guideTab === 'english' ? 'Prompt copied to clipboard.' : 'প্রম্পট ক্লিপবোর্ডে কপি হয়েছে।'
+                      );
+                    }}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                      marginHorizontal: 14,
+                      marginBottom: 14,
+                      paddingVertical: 10,
+                      borderRadius: 10,
+                      backgroundColor: colors.primary,
+                    }}
+                  >
+                    <MaterialIcons name="content-copy" size={16} color="#fff" />
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '700' }}>
+                      {guideTab === 'english' ? 'Copy Prompt' : 'প্রম্পট কপি করুন'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Customize Section */}
+          <View style={{
+            backgroundColor: colors.card,
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: 16,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <View style={{
+                width: 32, height: 32, borderRadius: 10,
+                backgroundColor: colors.primary,
+                alignItems: 'center', justifyContent: 'center',
+              }}>
+                <MaterialIcons name="tune" size={18} color="#fff" />
+              </View>
+              <Text style={{ color: colors.text, fontSize: 15, fontWeight: '700' }}>
+                {guideTab === 'english' ? 'Customize Your Prompt' : 'নিজের প্রম্পট কাস্টমাইজ করুন'}
+              </Text>
+            </View>
+            <Text style={{ color: colors.textMuted, fontSize: 12, lineHeight: 18, marginBottom: 14, marginLeft: 42 }}>
+              {guideTab === 'english'
+                ? 'Modify any part of the prompt to fit your needs:'
+                : 'আপনার প্রয়োজন অনুযায়ী প্রম্পটের যেকোনো অংশ পরিবর্তন করুন:'}
+            </Text>
+            <View style={{ gap: 10 }}>
+              {(guideTab === 'english' ? [
+                { key: 'Count', val: 'Change "20" to any number (10, 50, 100)', icon: 'tag' },
+                { key: 'Level', val: 'basic, intermediate, advanced, IELTS, GRE, SAT, TOEFL', icon: 'signal-cellular-alt' },
+                { key: 'Topic', val: 'Add topic: "related to science / business / medicine"', icon: 'topic' },
+              ] : [
+                { key: 'সংখ্যা', val: '"20" পরিবর্তন করুন যেকোনো সংখ্যায় (10, 50, 100)', icon: 'tag' },
+                { key: 'স্তর', val: 'basic, intermediate, advanced, IELTS, GRE, SAT, TOEFL', icon: 'signal-cellular-alt' },
+                { key: 'বিষয়', val: '"related to science / business / medicine" যোগ করুন', icon: 'topic' },
+              ]).map((tip, i) => (
+                <View key={i} style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: 10,
+                  backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.04)' : '#f8fafc',
+                  borderRadius: 10,
+                  padding: 12,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}>
+                  <MaterialIcons name={tip.icon} size={16} color={colors.primary} style={{ marginTop: 1 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>{tip.key}</Text>
+                    <Text style={{ color: colors.text, fontSize: 13, lineHeight: 18 }}>{tip.val}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <View style={{
+              marginTop: 14,
+              backgroundColor: theme === 'dark' ? '#0D0D0D' : '#fffbeb',
+              borderRadius: 12,
+              padding: 14,
+              borderWidth: 1,
+              borderColor: theme === 'dark' ? colors.borderLight : '#fde68a',
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <MaterialIcons name="lightbulb" size={18} color="#f59e0b" />
+                <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>
+                  {guideTab === 'english' ? 'Custom Prompt Example' : 'কাস্টম প্রম্পট উদাহরণ'}
+                </Text>
+              </View>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, lineHeight: 20, marginBottom: 10 }}>
+                {guideTab === 'english'
+                  ? 'Say you want 50 GRE-level words about psychology. Just change the count, level, and topic:'
+                  : 'ধরুন আপনি মনোবিজ্ঞান সম্পর্কিত ৫০টি GRE স্তরের শব্দ চান। শুধু সংখ্যা, স্তর এবং বিষয় পরিবর্তন করুন:'}
+              </Text>
+              <View style={{
+                backgroundColor: theme === 'dark' ? '#1A1A1A' : '#f8fafc',
+                borderRadius: 8,
+                padding: 12,
+                borderWidth: 1,
+                borderColor: theme === 'dark' ? colors.borderLight : '#e2e8f0',
+              }}>
+                {guideTab === 'english' ? (
+                  <Text style={{ fontSize: 12, lineHeight: 20 }}>
+                    <Text style={{ color: colors.textSecondary }}>Generate a JSON array of </Text>
+                    <Text style={{ color: '#16a34a', fontWeight: '700' }}>50</Text>
+                    <Text style={{ color: colors.textSecondary }}> </Text>
+                    <Text style={{ color: '#dc2626', fontWeight: '700' }}>GRE-level</Text>
+                    <Text style={{ color: colors.textSecondary }}> English vocabulary words </Text>
+                    <Text style={{ color: '#a855f7', fontWeight: '700' }}>related to psychology</Text>
+                    <Text style={{ color: colors.textSecondary }}> with their English meanings. Format each item as </Text>
+                    <Text style={{ color: colors.primary, fontWeight: '600' }}>{'{"name": "Love", "meaning": "A deep affection"}'}</Text>
+                    <Text style={{ color: colors.textSecondary }}>. Return only the JSON array, no extra text.</Text>
+                  </Text>
+                ) : (
+                  <Text style={{ fontSize: 12, lineHeight: 20 }}>
+                    <Text style={{ color: colors.textSecondary }}>Generate a JSON array of </Text>
+                    <Text style={{ color: '#16a34a', fontWeight: '700' }}>50</Text>
+                    <Text style={{ color: colors.textSecondary }}> </Text>
+                    <Text style={{ color: '#dc2626', fontWeight: '700' }}>GRE-level</Text>
+                    <Text style={{ color: colors.textSecondary }}> English vocabulary words </Text>
+                    <Text style={{ color: '#a855f7', fontWeight: '700' }}>related to psychology</Text>
+                    <Text style={{ color: colors.textSecondary }}> with their Bangla (Bengali) meanings. Format each item as </Text>
+                    <Text style={{ color: colors.primary, fontWeight: '600' }}>{'{"name": "Love", "meaning": "ভালোবাসা"}'}</Text>
+                    <Text style={{ color: colors.textSecondary }}>. Return only the JSON array, no extra text.</Text>
+                  </Text>
+                )}
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                <View style={{ backgroundColor: '#16a34a18', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                  <Text style={{ color: '#16a34a', fontSize: 11, fontWeight: '700' }}>50 = Count</Text>
+                </View>
+                <View style={{ backgroundColor: '#dc262618', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                  <Text style={{ color: '#dc2626', fontSize: 11, fontWeight: '700' }}>GRE-level = Level</Text>
+                </View>
+                <View style={{ backgroundColor: '#a855f718', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                  <Text style={{ color: '#a855f7', fontSize: 11, fontWeight: '700' }}>psychology = Topic</Text>
+                </View>
+              </View>
+            </View>
+          </View>
+
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -2013,6 +2665,124 @@ export default function App() {
     return (
       <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
         <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
+        <Modal
+          visible={showEditModal}
+          transparent
+          animationType="fade"
+          onRequestClose={handleCancelEdit}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={{ flex: 1 }}
+          >
+            <View style={{
+              flex: 1,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              justifyContent: 'center',
+              paddingHorizontal: 20,
+            }}>
+              <View style={{
+                backgroundColor: colors.card,
+                borderRadius: 20,
+                padding: 24,
+                borderWidth: 1,
+                borderColor: colors.border,
+              }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <View style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 12,
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}>
+                      <MaterialIcons name="edit" size={20} color="#fff" />
+                    </View>
+                    <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text }}>Edit Vocabulary</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={handleCancelEdit}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 16,
+                      backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <MaterialIcons name="close" size={20} color={colors.textMuted} />
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>Vocabulary</Text>
+                <TextInput
+                  style={[styles.input, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                  placeholder="Vocabulary"
+                  placeholderTextColor={colors.textMuted}
+                  value={editForm.name}
+                  onChangeText={(value) => setEditForm(prev => ({ ...prev, name: value, sortType: getSortType(value) }))}
+                />
+
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 6 }}>Meaning</Text>
+                <TextInput
+                  style={[styles.input, styles.textarea, { backgroundColor: colors.inputBg, borderColor: colors.inputBorder, color: colors.text }]}
+                  placeholder="Meaning"
+                  placeholderTextColor={colors.textMuted}
+                  multiline
+                  value={editForm.meaning}
+                  onChangeText={(value) => setEditForm(prev => ({ ...prev, meaning: value }))}
+                />
+
+                {editFormStatus && (
+                  <Text style={[
+                    styles.feedback,
+                    editFormStatus.type === 'error' ? { color: colors.error } : { color: colors.success },
+                  ]}>
+                    {editFormStatus.message}
+                  </Text>
+                )}
+
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 14,
+                      borderRadius: 12,
+                      backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.08)' : '#f1f5f9',
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      alignItems: 'center',
+                    }}
+                    onPress={handleCancelEdit}
+                  >
+                    <Text style={{ fontSize: 15, fontWeight: '600', color: colors.textSecondary }}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 14,
+                      borderRadius: 12,
+                      backgroundColor: colors.primary,
+                      alignItems: 'center',
+                      opacity: isEditSaving ? 0.7 : 1,
+                    }}
+                    onPress={handleSaveEdit}
+                    disabled={isEditSaving}
+                  >
+                    {isEditSaving ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={{ fontSize: 15, fontWeight: '700', color: '#fff' }}>Update</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </KeyboardAvoidingView>
+        </Modal>
         <FlatList
           data={managementList}
           renderItem={renderVocabItem}
@@ -2029,15 +2799,31 @@ export default function App() {
             <View style={{ paddingHorizontal: 8 }}>
               {commonHeader}
               {renderAddSection()}
-              {renderVocabListHeader()}
+              {managementMeta?.grandTotal > 0 && renderVocabListHeader()}
             </View>
           }
+          maintainVisibleContentPosition={{ minIndexForVisible: 0 }}
           ListFooterComponent={renderAddFooter()}
           ListEmptyComponent={
             !isLoadingList && (
-              <View style={styles.emptyStateContainer}>
-                <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-                  No vocabulary yet.
+              <View style={{
+                paddingVertical: 56,
+                paddingHorizontal: 24,
+                alignItems: 'center',
+                backgroundColor: theme === 'dark' ? colors.card : '#f8fafc',
+                borderRadius: 16,
+                borderWidth: 1,
+                borderColor: theme === 'dark' ? colors.border : '#e2e8f0',
+                borderStyle: 'dashed',
+                marginHorizontal: 8,
+                marginTop: 8,
+              }}>
+                <Text style={{ fontSize: 48, marginBottom: 16 }}>📖</Text>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 8, textAlign: 'center' }}>
+                  No Vocabulary Yet
+                </Text>
+                <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: 'center', lineHeight: 20 }}>
+                  Add your first word using the form above to get started.
                 </Text>
               </View>
             )
@@ -2141,7 +2927,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   textarea: {
-    minHeight: 80,
+    height: 80,
     textAlignVertical: 'top',
   },
   label: {
@@ -2425,12 +3211,11 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 20,
+    gap: 12,
   },
   bmcHeader: {
     alignItems: 'center',
     gap: 12,
-    marginBottom: 8,
   },
   bmcIconWrapper: {
     width: 56,
@@ -2446,9 +3231,8 @@ const styles = StyleSheet.create({
   },
   bmcDescription: {
     textAlign: 'center',
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 8,
+    fontSize: 15,
+    lineHeight: 22,
   },
   bmcPaymentCard: {
     borderWidth: 1,
@@ -2501,7 +3285,6 @@ const styles = StyleSheet.create({
   },
   bmcFooter: {
     textAlign: 'center',
-    marginTop: 8,
     fontWeight: '600',
     fontSize: 15,
   },
